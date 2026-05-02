@@ -54,7 +54,6 @@ def plot_loss(train_losses, val_losses, stationary_ratios, val_maes, val_maes_st
         ax2.plot(epochs, values, color='purple', linewidth=1.5, label='Stationary Ratio')
         ax2.set_ylabel("Stationary Ratio")
         ax2.set_yscale('log')
-        ax2.set_xlabel("Epoch")
         ax2.grid(True)
         ax2.legend()
 
@@ -78,8 +77,6 @@ def plot_loss(train_losses, val_losses, stationary_ratios, val_maes, val_maes_st
 
     ax3.set_ylabel("MAE")
     ax3.set_yscale('log')
-    ax3.set_xlabel("Epoch")
-    ax3.set_title("MAE Metrics")
     ax3.grid(True)
     ax3.legend()
 
@@ -125,8 +122,6 @@ def plot_loss(train_losses, val_losses, stationary_ratios, val_maes, val_maes_st
 
     ax4.set_ylabel("Percentile MAE")
     ax4.set_yscale('log')
-    ax4.set_xlabel("Epoch")
-    ax4.set_title("Percentile MAE Analysis")
     ax4.grid(True)
     ax4.legend()
 

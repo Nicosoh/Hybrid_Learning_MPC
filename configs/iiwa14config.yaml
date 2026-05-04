@@ -37,44 +37,44 @@ mpc:
   use_RTI: true
   mpc_timestep: 0.01
   x0_q:
-  - -1.7796350047135225
-  - -1.3353321392245316
-  - -1.138011599103666
-  - 1.8573589507179795
-  - 2.201962023778604
-  - -0.12227515606129336
+  - 2.747553959561297
+  - -1.0289152356009776
+  - 2.6801912226268048
+  - -1.9341492240364366
+  - 2.200800144314674
+  - 0.9707994769085588
   x0_v:
-  - -0.06062739950829016
-  - 0.15890371202346404
-  - 0.3330978994473135
-  - 0.2592240724329988
-  - -0.3038559898978535
-  - -0.2324892394541816               # Inital joint velocity if random not true
+  - 0.060119198847184974
+  - -0.19207864912306533
+  - -0.33381647964715855
+  - -0.2792713177043522
+  - -0.410005184216297
+  - -0.35466842269641297               # Inital joint velocity if random not true
   x0_q_random: true # If true, x0 above will not be used
   x0_range: [[[0.4, 0.0, 0.05], [0.7, 0.4, 0.20]],
             [[0.4, -0.4, 0.05], [0.7, 0.0, 0.20]],
             [[0.4, -0.4, 0.05], [0.7, 0.4, 0.50]]]
-  # x0_range: [[0.3, 0.15, 0.05], [0.5, 0.35, 0.25]] # Zone 0
+  # x0_range: [[0.4, -0.4, 0.05], [0.7, 0.4, 0.25]] # Zone 0
   x0_q_sampling: uniform # Only uniform for now
   yref_q:
-  - -2.956327184058243
-  - -1.368121317950781
-  - -0.9973950324129197
-  - 1.799856909391492
-  - -0.0717763000182412
-  - 1.110782882870358
+  - 0.5305697374016014
+  - 1.1066704110670154
+  - -2.8004519444243225
+  - 1.5619264634163885
+  - 2.2538614762475877
+  - 1.4111113623056641
   yref_q_random: true
-  yref_range: [[[0.4, -0.4, 0.05], [0.7, 0.0, 0.20]], # Zone 3
-              [[0.4, 0.0, 0.05], [0.7, 0.4, 0.20]],
+  yref_range: [[[0.4, -0.4, 0.05], [0.7, 0.0, 0.40]],
+              [[0.4, 0.0, 0.05], [0.7, 0.4, 0.40]],
               [[0.4, -0.4, 0.05], [0.7, 0.4, 0.50]]]
-  # yref_range: [[0.3, -0.35, 0.05], [0.5, -0.15, 0.25]] # Zone 0
+  # yref_range: [[0.4, -0.4, 0.05], [0.7, 0.4, 0.25]] # Zone 0
   yref_q_sampling: uniform
-  zone_probability: [0.35, 0.35, 0.3]
+  zone_probability: [0.4, 0.4, 0.2]
   terminal_cost: false
   Q_mat: [5000, 5000, 5000] # State cost weights for ee stage tracking
   Q_mat_e: [5000, 5000, 5000] # State cost weights for ee terminal tracking
   # Q_dot_mat: [1, 1, 0.75, 0.75, 0.25, 0.25, 0.25] # Velocity state cost weights for joints
-  Q_dot_mat: [200, 200, 150, 150, 50, 50] # Velocity state stage cost weights for joints
+  Q_dot_mat: [300, 300, 200, 200, 50, 50] # Velocity state stage cost weights for joints
   # Q_dot_mat: [50, 50, 30, 30, 10, 10] # Velocity state stage cost weights for joints
   Q_dot_mat_e: [0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001] # Velocity state terminal cost weights for joints
   # Q_dot_mat: [500, 500, 375, 375, 125, 125, 125]
@@ -193,8 +193,8 @@ plots:
   Control Input 5: ["ctrl", 4, "N"]
   Control Input 6: ["ctrl", 5, "N"]
   # Control Input 7: ["ctrl", 6, "N"]
-  # Squared Distance 1: ["sq_dist", 0, "m^2"]
-  # Squared Distance 2: ["sq_dist", 1, "m^2"]
-  # Squared Distance 3: ["sq_dist", 2, "m^2"]
-  # Distance 1: ["sq_dist", 0, "m"]
-  # Distance 2: ["sq_dist", 1, "m"]
+  Squared Distance 1: ["sq_dist", 0, "m^2"]
+  Squared Distance 2: ["sq_dist", 1, "m^2"]
+  Squared Distance 3: ["sq_dist", 2, "m^2"]
+  Distance 1: ["sq_dist", 0, "m"]
+  Distance 2: ["sq_dist", 1, "m"]

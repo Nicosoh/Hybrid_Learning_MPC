@@ -1,3 +1,5 @@
 playback_speed: 1.0  # Speed multiplier for video playback
 loop: true          # Whether to loop the replay after reaching the end
 render_fps: 30
+show_GT_controller: false
+save_video: false

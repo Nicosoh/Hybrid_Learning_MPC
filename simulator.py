@@ -400,6 +400,7 @@ class MujocoReplay:
         self.playing = True
         self.speed = replay_config["playback_speed"]
         self.loop = replay_config["loop"]
+        self.show_GT_controller = replay_config["show_GT_controller"]
         self.N_horizon = model_config["mpc"]["N_horizon"]
         self._last_time = None
         self.render_fps = self.replay_config["render_fps"]
@@ -479,47 +480,26 @@ class MujocoReplay:
             self.data.qvel[:] = 0
 
         mujoco.mj_forward(self.model, self.data)
-    
-    def viz_horizon(self, viewer):
-        horizon = self.xyz_traj[self.frame]   # shape: [N_horizon, 3]
 
-        # Subsample indices along horizon
+    def _draw_path(self, viewer, horizon, rgba):
+        """Refactored original path drawing logic."""
         if len(horizon) <= 50:
             indices = range(len(horizon))
         else:
             indices = np.linspace(0, len(horizon) - 1, 50).astype(int)
 
-        # Draw spheres
-        for i, idx in enumerate(indices):
-            pos = horizon[idx]
-
-            add_visual_sphere(
-                viewer.user_scn,
-                pos,
-                radius=0.01,
-                rgba=(0.0, 0.5, 1.0, 0.3)
-            )
+        for idx in indices:
+            add_visual_sphere(viewer.user_scn, horizon[idx], radius=0.01, rgba=rgba)
+            
+    def viz_horizon(self, viewer):
+        """Draws the predicted MPC horizon (Blue)."""
+        self._draw_path(viewer, self.xyz_traj[self.frame], rgba=(0.0, 0.5, 1.0, 0.3))
     
     def viz_GT_horizon(self, viewer):
-        horizon = self.GT_xyz_traj[self.frame]   # shape: [N_horizon, 3]
-
-        # Subsample indices along horizon
-        if len(horizon) <= 50:
-            indices = range(len(horizon))
-        else:
-            indices = np.linspace(0, len(horizon) - 1, 50).astype(int)
-
-        # Draw spheres
-        for i, idx in enumerate(indices):
-            pos = horizon[idx]
-
-            add_visual_sphere(
-                viewer.user_scn,
-                pos,
-                radius=0.01,
-                rgba=(0.5, 0.0, 1.0, 0.3)
-            )
-
+        """Update for the original MujocoReplay class."""
+        if self.GT_xyz_traj is not None:
+            self._draw_path(viewer, self.GT_xyz_traj[self.frame], rgba=(0.5, 0.0, 1.0, 0.3))
+    
     # ---------- main loop ----------
     def run(self):
         with mujoco.viewer.launch_passive(
@@ -542,12 +522,13 @@ class MujocoReplay:
                 self.apply_state()
                 self.viz_horizon(viewer)
 
-                if self.ground_truth_controller:
+                if self.ground_truth_controller and self.show_GT_controller:
                     self.viz_GT_horizon(viewer)
 
                 if self.output_xyz:
                     add_visual_sphere(viewer.user_scn, self.model_config["mpc"]["yref"], 0.03, rgba=(0.0, 1.0, 0.0, 0.2))  # For the end goal (green)
                     add_visual_sphere(viewer.user_scn, self.model_config["mpc"]["x0"], 0.03, rgba=(1.0, 1.0, 0.0, 0.2))  # For the start goal (yellow)
+                
                 if self.collision_config is not None:
                     # Add obstacle capsules to the scene (for now ignoring that over time it can shift aka static obstacles)
                     obstacles = self.collision_config["obstacles"]
@@ -561,3 +542,145 @@ class MujocoReplay:
                 sleep_time = self._render_dt - (time.time() - loop_start)
                 if sleep_time > 0:
                     time.sleep(sleep_time)
+
+class MujocoComparisonReplay(MujocoReplay):
+    def __init__(self, model_config, replay_config, combined_logs, collision_config):
+        # Initialize the base class with Run A data
+        super().__init__(model_config, replay_config, combined_logs["run_a"], collision_config)
+
+        # Replay config options
+        self.save_video = replay_config["save_video"]
+
+        # Store separate logs
+        self.logs_a = combined_logs["run_a"]
+        self.logs_b = combined_logs["run_b"]
+
+        # Create the second data object for the Ghost
+        self.data2 = mujoco.MjData(self.model)
+        
+        # Sync frames based on the shorter log
+        self.nframes = min(len(self.logs_a["qpos"]), len(self.logs_b["qpos"]))
+
+        # Ghost Visual Options
+        self.vopt2 = mujoco.MjvOption()
+        self.vopt2.flags[mujoco.mjtVisFlag.mjVIS_TRANSPARENT] = True
+        self.pert = mujoco.MjvPerturb()
+        self.catmask = mujoco.mjtCatBit.mjCAT_DYNAMIC
+
+        # Recording options
+        self.video_path = "comparison_replay.mp4"
+        self.frames = []
+
+    def apply_state(self):
+        """Updates both data objects for the current frame."""
+        # Update Physical Robot (Run A)
+        self.data.qpos[:] = self.logs_a["qpos"][self.frame]
+        if "qvel" in self.logs_a:
+            self.data.qvel[:] = self.logs_a["qvel"][self.frame]
+        
+        # Update Ghost Robot (Run B)
+        self.data2.qpos[:] = self.logs_b["qpos"][self.frame]
+        if "qvel" in self.logs_b:
+            self.data2.qvel[:] = self.logs_b["qvel"][self.frame]
+        
+        # Step kinematics for both
+        mujoco.mj_forward(self.model, self.data)
+        mujoco.mj_forward(self.model, self.data2)
+
+    def run(self):
+        """Main loop with off-screen rendering for video capture."""
+        if self.save_video:
+            video_renderer = mujoco.Renderer(self.model, height=480, width=640)
+
+        with mujoco.viewer.launch_passive(
+            self.model,
+            self.data,
+            key_callback=self.key_callback,
+        ) as viewer:
+
+            self._last_time = time.time()
+
+            while viewer.is_running():
+                loop_start = time.time()
+                elapsed = loop_start - self._last_time if self._last_time else 0
+                self._last_time = loop_start
+
+                # Reset the custom geometry buffers
+                viewer.user_scn.ngeom = 0
+                
+                self.advance(elapsed)
+                self.apply_state()
+
+                # Inner helper to populate any scene with our custom markers
+                def add_visuals(target_scn):
+                    # 1. Horizons (Run A: Blue, Run B: Orange)
+                    self._draw_path(target_scn, self.logs_a["xyz_traj"][self.frame], rgba=(0.0, 0.5, 1.0, 0.3))
+                    self._draw_path(target_scn, self.logs_b["xyz_traj"][self.frame], rgba=(1.0, 0.5, 0.0, 0.3))
+                    
+                    # 2. Ghost Robot (Run B)
+                    mujoco.mjv_addGeoms(self.model, self.data2, self.vopt2, self.pert, self.catmask, target_scn)
+
+                    # 3. Targets/Start
+                    if self.output_xyz:
+                        add_visual_sphere(target_scn, self.model_config["mpc"]["yref"], 0.03, rgba=(0.0, 1.0, 0.0, 0.2))
+                        add_visual_sphere(target_scn, self.model_config["mpc"]["x0"], 0.03, rgba=(1.0, 1.0, 0.0, 0.2))
+                    
+                    # 4. GT Horizon if enabled
+                    if self.ground_truth_controller and self.show_GT_controller:
+                        if "GT_xyz_traj" in self.logs_a:
+                            self._draw_path(target_scn, self.logs_a["GT_xyz_traj"][self.frame], rgba=(0.5, 0.0, 1.0, 0.3))
+                        if "GT_xyz_traj" in self.logs_b:
+                            self._draw_path(target_scn, self.logs_b["GT_xyz_traj"][self.frame], rgba=(1.0, 0.0, 0.5, 0.3))
+
+                    # 5. Obstacles
+                    if self.collision_config is not None:
+                        for obs in self.collision_config["obstacles"].values():
+                            add_visual_capsule(target_scn, p1=obs["from"], p2=obs["to"], radius=obs["radius"], rgba=(0.8, 0.1, 0.1, 1))
+
+                # Populate the viewer for real-time feedback
+                add_visuals(viewer.user_scn)
+
+                # Update the video renderer's scene and capture the frame
+                if self.save_video:
+                    video_renderer.update_scene(self.data, camera=0) # Use MjvOption
+                    add_visuals(video_renderer.scene)
+                    
+                    self.frames.append(video_renderer.render())
+
+                viewer.sync()
+
+                # Render Rate Limiting
+                sleep_time = self._render_dt - (time.time() - loop_start)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+
+        # Save video after window is closed
+        if len(self.frames) > 0:
+            print(f"Saving video to {self.video_path}...")
+            media.write_video(self.video_path, self.frames, fps=self.render_fps)
+            print("Video saved.")
+
+    def viz_horizon(self, viewer):
+        """Redirects to the refactored path drawer for both runs."""
+        # This is called by advance() in the base class, but we handle 
+        # actual scn population inside the run() loop for video sync.
+        pass
+
+    def viz_GT_horizon(self, viewer):
+        """Redirects to the refactored path drawer for both runs."""
+        # This is called by advance() in the base class, but we handle 
+        # actual scn population inside the run() loop for video sync.
+        pass
+
+    def _draw_path(self, scn_or_viewer, horizon, rgba):
+        """Standardized helper to draw a path into a scene or viewer."""
+        # Determine if we are acting on the viewer's user_scn or a raw MjvScene
+        target_scn = scn_or_viewer.user_scn if hasattr(scn_or_viewer, 'user_scn') else scn_or_viewer
+        
+        if len(horizon) <= 50:
+            indices = range(len(horizon))
+        else:
+            indices = np.linspace(0, len(horizon) - 1, 50).astype(int)
+
+        for idx in indices:
+            add_visual_sphere(target_scn, horizon[idx], radius=0.01, rgba=rgba)

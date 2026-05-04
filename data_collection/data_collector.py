@@ -126,7 +126,6 @@ def run_data_collector(model_name, data_config_path="data_collection/data_config
 
     # Save config used
     save_yaml(data_config, os.path.join(output_dir, "data_config.yaml"))
-    save_yaml(config, os.path.join(output_dir, "model_config.yaml"))
 
     # Split n_runs roughly evenly across workers
     run_indices_per_worker = [[] for _ in range(n_workers)]

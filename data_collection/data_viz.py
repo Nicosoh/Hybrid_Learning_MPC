@@ -34,6 +34,7 @@ def main(model_name, data_path, run, samples):
     all_logs = load_npz(npz_file)
     if config["IK"]["IK_required"]:
         plot_traj_xyz(all_logs, config=config, samples=samples, frame_name="attachment_site", save_dir=plots_dir)
+        plot_xyz_targets(all_logs, samples=samples, save_dir=plots_dir)
 
     # Run plotting functions
     plot_traj(all_logs, save_dir=plots_dir, samples=samples, config=config, run_filter=run)
@@ -90,6 +91,69 @@ def plot_traj_xyz(all_logs, config, samples, frame_name, save_dir=None):
         plt.savefig(os.path.join(save_dir, f"{frame_name}_traj_3d.png"), dpi=200)
 
     plt.tight_layout()
+    plt.show()
+
+def plot_xyz_targets(all_logs, samples, save_dir=None):
+    """
+    Plots all target (yref) points and all trajectory start/paths 
+    in two separate 3D subplots for all selected runs.
+    """
+    run_keys = sorted(all_logs.keys())
+    if samples is not None and samples < len(run_keys):
+        run_keys = random.sample(run_keys, samples)
+    else:
+        print(f"No sampling requested — plotting all {len(run_keys)} runs.")
+    
+    # Initialize the figure and axes OUTSIDE the loop
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection="3d")
+
+    # To avoid messy legends, we only add labels once
+    first_run = True
+
+    for run_key in run_keys:
+        run_data = all_logs[run_key]
+        
+        yref = run_data["yref_xyz"]    # Shape (3,)
+        xyz_traj = run_data["xyzpos"]  # Shape (T, 3)
+        start_pos = xyz_traj[0]        # First position
+
+        # --- Plot on Subplot 1: Target References ---
+        ax.scatter(
+            yref[0], yref[1], yref[2], 
+            c='red', s=40, alpha=0.6,
+            label='yref (Goal)' if first_run else ""
+        )
+
+        # --- Plot on Subplot 2: Start Positions and Paths ---
+        # Plot path
+        ax.plot(
+            xyz_traj[:, 0], xyz_traj[:, 1], xyz_traj[:, 2], 
+            alpha=0.3, linewidth=1
+        )
+        # Plot starting point
+        ax.scatter(
+            start_pos[0], start_pos[1], start_pos[2], 
+            c='green', s=40, alpha=0.6,
+            label='Initial Position' if first_run else ""
+        )
+        
+        first_run = False
+
+    # Formatting Subplot 1
+    ax.set_title(f"Target References (yref)\nN={len(run_keys)} runs")
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    set_axes_equal(ax)
+    ax.legend()
+
+    plt.tight_layout()
+
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, "all_xyz_targets_comparison.png"), dpi=200)
+    
     plt.show()
 
 def set_axes_equal(ax):

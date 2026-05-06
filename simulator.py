@@ -7,10 +7,10 @@ import mujoco.viewer
 import time
 
 class MuJoCoSimulator:
-    def __init__(self, config, yref, controller,collision_config=None, gt_controller=None):
+    def __init__(self, config, yref, controller, gt_controller=None):
         self.config = config
         self.yref = yref
-        self.collision_config = collision_config
+        self.collision_config = config["collision"]
         self.controller = controller
         self.gt_controller = gt_controller
 
@@ -141,6 +141,10 @@ class MuJoCoSimulator:
             "xyz_traj": [],
         }
         
+        if self.config["collision"]["collision_avoidance_obstacle"]:
+            self.logs["obstacles"] = self.collision_config["obstacles"]
+            self.obstacles = self.collision_config["obstacles"] 
+
         if self.IK_required:
             self.logs["yref_q"] = self.config["mpc"]["yref_q"][:self.model.nq]
 
@@ -208,7 +212,7 @@ class MuJoCoSimulator:
                 if output_xyz:
                     add_visual_sphere(self.renderer.scene, self.config["mpc"]["yref"], 0.03, rgba=(0.0, 1.0, 0.0, 0.2))  # For the end goal (green)
                     add_visual_sphere(self.renderer.scene, self.config["mpc"]["x0"], 0.03, rgba=(1.0, 1.0, 0.0, 0.2))  # For the start goal (yellow)
-                if self.collision_config is not None:
+                if self.collision_config["collision_avoidance_obstacle"]:
                     # Add obstacle capsules to the scene (for now ignoring that over time it can shift aka static obstacles)
                     obstacles = self.collision_config["obstacles"]
 
@@ -383,10 +387,10 @@ def get_reference_for_horizon(traj, t, N, mpc_dt):
     return {"stage": yref_stage, "terminal": yref_terminal}
 
 class MujocoReplay:
-    def __init__(self, model_config, replay_config, logs_dict, collision_config):
+    def __init__(self, model_config, replay_config, logs_dict):
         self.model_config = model_config
         self.replay_config = replay_config
-        self.collision_config = collision_config
+        self.collision_config = model_config["collision"]
 
         self.model, self.data = load_scene_from_xml(self.model_config)                  # Create MuJoCo simulator object with loaded model
         self.model.opt.timestep = self.model_config["mpc"]["mpc_timestep"]     # Set simulation timestep
@@ -529,7 +533,7 @@ class MujocoReplay:
                     add_visual_sphere(viewer.user_scn, self.model_config["mpc"]["yref"], 0.03, rgba=(0.0, 1.0, 0.0, 0.2))  # For the end goal (green)
                     add_visual_sphere(viewer.user_scn, self.model_config["mpc"]["x0"], 0.03, rgba=(1.0, 1.0, 0.0, 0.2))  # For the start goal (yellow)
                 
-                if self.collision_config is not None:
+                if self.collision_config["collision_avoidance_obstacle"]:
                     # Add obstacle capsules to the scene (for now ignoring that over time it can shift aka static obstacles)
                     obstacles = self.collision_config["obstacles"]
 
@@ -544,9 +548,9 @@ class MujocoReplay:
                     time.sleep(sleep_time)
 
 class MujocoComparisonReplay(MujocoReplay):
-    def __init__(self, model_config, replay_config, combined_logs, collision_config):
+    def __init__(self, model_config, replay_config, combined_logs):
         # Initialize the base class with Run A data
-        super().__init__(model_config, replay_config, combined_logs["run_a"], collision_config)
+        super().__init__(model_config, replay_config, combined_logs["run_a"])
 
         # Replay config options
         self.save_video = replay_config["save_video"]
@@ -633,7 +637,7 @@ class MujocoComparisonReplay(MujocoReplay):
                             self._draw_path(target_scn, self.logs_b["GT_xyz_traj"][self.frame], rgba=(1.0, 0.0, 0.5, 0.3))
 
                     # 5. Obstacles
-                    if self.collision_config is not None:
+                    if self.collision_config["collision_avoidance_obstacle"]:
                         for obs in self.collision_config["obstacles"].values():
                             add_visual_capsule(target_scn, p1=obs["from"], p2=obs["to"], radius=obs["radius"], rgba=(0.8, 0.1, 0.1, 1))
 

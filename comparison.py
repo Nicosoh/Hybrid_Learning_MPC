@@ -39,11 +39,9 @@ def load_run_data(run_folder):
     # Load collision_config
     if model_config["collision"]["collision_avoidance_obstacle"] or \
        model_config["collision"]["collision_avoidance_ground"]:
-        collision_config, model_config = load_collision_config(model_config)
-    else:
-        collision_config = None
+       model_config = load_collision_config(model_config)
 
-    return model_config, logs_dict, collision_config
+    return model_config, logs_dict
 
 def main(run_folder_a, run_folder_b):
     # Load replay global settings
@@ -52,10 +50,10 @@ def main(run_folder_a, run_folder_b):
 
     # Load both runs
     print(f"Loading Run A: {run_folder_a}")
-    config_a, logs_a, coll_a = load_run_data(run_folder_a)
+    config_a, logs_a = load_run_data(run_folder_a)
     
     print(f"Loading Run B: {run_folder_b}")
-    config_b, logs_b, coll_b = load_run_data(run_folder_b)
+    config_b, logs_b = load_run_data(run_folder_b)
 
     # Combine logs for the simulator
     # Note: This assumes your MujocoReplay class is updated to handle 
@@ -65,7 +63,7 @@ def main(run_folder_a, run_folder_b):
         "run_b": logs_b
     }
 
-    replay = MujocoComparisonReplay(config_a, replay_config, combined_logs, coll_a)
+    replay = MujocoComparisonReplay(config_a, replay_config, combined_logs)
     
     print("Starting Comparison Replay...")
     replay.run()

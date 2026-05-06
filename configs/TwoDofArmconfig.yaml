@@ -29,14 +29,14 @@ pin:
 mpc:
   json_name: "main_controller"
   controller_name: "ManipulatorMPCController_eeTracker_point"
-  # controller_name: "NNManipulatorMPCController_eeTracker_point"
+  # controller_name: "NNManipulatorMPCController_eeTracker_point_obs"
   Fmax: [2.5, 2.5] # Maximum force
   xmax: [3.142, 3.142, 1.0, 1.0]
-  N_horizon: 200 # Prediction horizon
+  N_horizon: 20 # Prediction horizon
   use_RTI: true # Use Real-Time Iteration
-  mpc_timestep: 0.01 # seconds  
-  x0_q: [0.7, -1.0]
-  x0_v: [0, 0]      # Inital joint velocity if random not true
+  mpc_timestep: 0.01 # seconds
+  x0_q: [-0.1798189000987478, -0.9627621754770117]
+  x0_v: [-0.6, -0.3]      # Inital joint velocity if random not true
   x0_q_random: true # If true, x0 above will not be used
   # x0_range: [[[0.0, 0.0, 1.3], [0.8, 0.0, 1.7]], # Zone 1 # Range for random x0 [[min_xyz], [max_xyz]]
   #            [[0.0, 0.0, 1.3], [0.8, 0.0, 1.7]],
@@ -48,7 +48,7 @@ mpc:
               [[-1.3, 0.0, 0.4], [-0.9, 0.0, 0.8]],
               [[-0.9, 0.0, 0.4], [-0.5, 0.0, 1.2]]]
   x0_q_sampling: uniform # Only uniform for now
-  yref_q: [-0.7, 1.0]
+  yref_q: [-0.3, -1.6]
   yref_q_random: true
   # yref_range: [[[-0.8, 0.0, 0.8], [0.0, 0.0, 1.3]],
   #              [[-0.8, 0.0, 1.3], [0.0, 0.0, 1.7]],
@@ -113,11 +113,12 @@ collision:
       to: j_2
       radius: 0.1
 
-  obstacles_random: false
+  obstacles_random: true
   obstacles_num: 1
-  obstacles_range: [[0.3, 0.0, 0.0], [0.8, 0.0, 0.60],       # [[from_min_x,y,z, from_max_x,y,z], 
-                    [0.3, 0.0, 0.0], [0.8, 0.0, 0.60],       # [to_min_x,y,z, to_max_x,y,z], 
-                    [0.05, 0.05]]                             # [radius_min, radius_max]]
+  obstacle_length: 0.6
+  obstacle_center_range: [[-1.25, 0.0, 0.75], [-1.15, 0.0, 0.85]]
+  obstacle_radius: 0.02
+  obstacle_RPY_range: [[0.0, -0.1, 0.0], [0.0, 0.1, 0.0]] # rad
   obstacles_sampling: uniform
 
   obstacles: # Only if obstacles_random: true and will be replaced
@@ -125,6 +126,8 @@ collision:
       from: [-1.5, 0.0, 0.8]
       to:   [-0.9, 0.0, 0.8]
       radius: 0.02
+      rpy: [0.0, 0.0, 0.0] # rad
+      center: [-1.2, 0.0, 0.8]
 
   ground_plane: [0, 0, 1, 0]
 
@@ -146,7 +149,7 @@ VI:
       json_name: "GT_controller"
 
 NN:
-  model_name: "TwoDofArmModelAcados"
+  model_name: "TwoDofArmModelAcados_obs"
   checkpoint_path: ""
 
 plots:
@@ -159,5 +162,5 @@ plots:
   Joint 2 Angular Velocity: ["qvel", 1, "rad/s"]
   Control Input 1: ["ctrl", 0, "Nm"]
   Control Input 2: ["ctrl", 1, "Nm"]
-  # Squared Distance 1: ["sq_dist", 0, "m^2"]
-  # Squared Distance 2: ["sq_dist", 1, "m^2"]
+  Squared Distance 1: ["sq_dist", 0, "m^2"]
+  Squared Distance 2: ["sq_dist", 1, "m^2"]

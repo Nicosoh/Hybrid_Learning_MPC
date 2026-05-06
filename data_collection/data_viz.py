@@ -557,6 +557,45 @@ def plot_dist(
     fig_cost_log.tight_layout()
     fig_cost_log.savefig(os.path.join(save_dir, "Cost_histogram_log_bins.png"))
 
+    # ===== obstacle distribution =====
+    fig_obs, axes_obs = plt.subplots(2, 3, figsize=(15, 8))
+
+    centers = []
+    rpys = []
+
+    for run_key in run_keys:
+        obs = all_logs[run_key]["obstacles"].item()["obs1"]
+
+        centers.append(obs["center"])  # (3,)
+        rpys.append(obs["rpy"])        # (3,)
+
+    centers = np.array(centers)  # (N, 3)
+    rpys = np.array(rpys)        # (N, 3)
+
+    center_labels = ["X", "Y", "Z"]
+    rpy_labels = ["Roll", "Pitch", "Yaw"]
+
+    # ---- Row 1: Centers ----
+    for i in range(3):
+        ax = axes_obs[0, i]
+        ax.hist(centers[:, i], bins=40, alpha=0.7)
+        ax.set_title(f"Center {center_labels[i]}")
+        ax.set_xlabel("Value")
+        ax.set_ylabel("Frequency")
+        ax.grid(True)
+
+    # ---- Row 2: RPY ----
+    for i in range(3):
+        ax = axes_obs[1, i]
+        ax.hist(rpys[:, i], bins=40, alpha=0.7)
+        ax.set_title(f"{rpy_labels[i]}")
+        ax.set_xlabel("Radians")
+        ax.set_ylabel("Frequency")
+        ax.grid(True)
+
+    fig_obs.tight_layout()
+    fig_obs.savefig(os.path.join(save_dir, "Obstacle_histogram_plots.png"))
+
     plt.show()
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ import mediapy as media
 import matplotlib.pyplot as plt
 
 from casadi import vertcat
+from scipy.spatial.transform import Rotation as R
 from robot_descriptions.loaders.mujoco import load_robot_description
 
 # ========== PLOTTING ==========
@@ -496,79 +497,53 @@ def randomise_x0(config):
 
 # ========== Loading obstacles/collision setup ==========
 def load_collision_config(config):
-    cfg = config["collision"]
-    collision = {}
-
-    collision["collision_avoidance_obstacle"] = cfg.get("collision_avoidance_obstacle", False)
-    collision["collision_avoidance_ground"] = cfg.get("collision_avoidance_ground", False)
-    
-    # ==========================================================
-    # LINKS
-    # ==========================================================
-    collision["links"] = {
-        name: {
-            "from": link["from"],
-            "to": link["to"],
-            "radius": float(link["radius"]),
-        }
-        for name, link in cfg["links"].items()
-    }
+    collision_config = config["collision"]
 
     # ==========================================================
     # OBSTACLES
     # ==========================================================
-    if cfg.get("collision_avoidance_obstacle", False):
-
-        if cfg.get("obstacles_random", False):
-            obstacles = randomise_obstacles(cfg)
-            # Save generated obstacles back to config (YAML safe)
-            config["collision"]["obstacles"] = to_yaml_safe(obstacles)
+    if collision_config["collision_avoidance_obstacle"]:
+        if collision_config["obstacles_random"]:
+            obstacles = randomise_obstacles(collision_config)
+            collision_config["obstacles"] = to_yaml_safe(obstacles)
+        # Since not random, expect obstacles to be fully defined in config
         else:
-            obstacles = {
-                name: {
-                    "from": np.array(obs["from"], dtype=float),
-                    "to": np.array(obs["to"], dtype=float),
-                    "radius": float(obs["radius"]),
-                }
-                for name, obs in cfg.get("obstacles", {}).items()
-            }
-    else:
-        obstacles = {}
+            required_keys = ["from", "to", "radius", "rpy", "center"]
 
-    collision["obstacles"] = obstacles
+            for name, obs in collision_config["obstacles"].items():
+                for key in required_keys:
+                    if key not in obs:
+                        raise ValueError(f"Obstacle '{name}' missing '{key}'")
 
     # ==========================================================
     # GROUND
     # ==========================================================
-    if cfg.get("collision_avoidance_ground", False):
-        collision["ground_plane"] = np.array(cfg["ground_plane"], dtype=float)
-    else:
-        collision["ground_plane"] = None
+    if collision_config["collision_avoidance_ground"]:
+        if collision_config["ground_plane"] is None:
+            raise ValueError("collision_avoidance_ground=True but no ground_plane defined")
 
-    # ==========================================================
-    # COLLISION PAIRS
-    # ==========================================================
-    pairs_cfg = cfg.get("collision_pairs", {})
 
-    collision["collision_pairs"] = {
-        "obstacle": pairs_cfg.get("obstacle", []),
-        "ground": pairs_cfg.get("ground", []),
-    }
+    # Validate
+    validate_collision_config(collision_config)
 
-    validate_collision_config(collision)
+    # Replace original collision config
+    config["collision"] = collision_config
 
-    return collision, config
+    return config
 
-def randomise_obstacles(config):
-    collision_cfg = config["collision"]
-
+def randomise_obstacles(collision_cfg):
     num_obs = collision_cfg["obstacles_num"]
     sampling = collision_cfg["obstacles_sampling"]
 
-    (   from_min, from_max,
-        to_min, to_max,
-        radius_range) = collision_cfg["obstacles_range"]
-    
+    # Updated config structure expectations:
+    # center_min/max: [x, y, z] bounds for the center
+    # length: float
+    # radius_range: [min, max]
+    center_range = collision_cfg["obstacle_center_range"]
+    length = collision_cfg["obstacle_length"]
+    radius = collision_cfg["obstacle_radius"]
+    obstacle_RPY_range = collision_cfg["obstacle_RPY_range"]
+
     obstacles = {}
 
     if sampling != "uniform":
@@ -577,15 +552,32 @@ def randomise_obstacles(config):
     for i in range(num_obs):
         obs_name = f"obs{i+1}"
 
-        from_pt = np.random.uniform(low=from_min, high=from_max)
-        to_pt   = np.random.uniform(low=to_min,   high=to_max)
-        radius  = np.random.uniform(low=radius_range[0],
-                                    high=radius_range[1])
+        # 1. Sample the center location
+        center = np.random.uniform(low=center_range[0], high=center_range[1])
+
+        # 2. Sample Roll, Pitch, Yaw (in radians)
+        # Usually: Roll [-pi, pi], Pitch [-pi/2, pi/2], Yaw [-pi, pi]
+        rpy = np.random.uniform(
+            low=obstacle_RPY_range[0], 
+            high=obstacle_RPY_range[1]
+        )
+
+        # 3. Calculate direction vector from RPY
+        # We assume the capsule's default axis is along X [1, 0, 0]
+        rot = R.from_euler('xyz', rpy)
+        direction = rot.apply([1, 0, 0]) 
+
+        # 4. Calculate endpoints based on fixed length
+        half_len = length / 2.0
+        from_pt = center - (direction * half_len)
+        to_pt   = center + (direction * half_len)
 
         obstacles[obs_name] = {
             "from": from_pt,
             "to": to_pt,
             "radius": float(radius),
+            "rpy": rpy, # Useful for debugging or visualization
+            "center": center
         }
 
     return obstacles
@@ -597,7 +589,7 @@ def validate_collision_config(collision):
     # ==========================================================
     # OBSTACLE VALIDATION
     # ==========================================================
-    if collision.get("collision_avoidance_obstacle", False):
+    if collision["collision_avoidance_obstacle"]:
 
         obstacles = collision["obstacles"]
 
@@ -610,9 +602,9 @@ def validate_collision_config(collision):
     # ==========================================================
     # GROUND VALIDATION
     # ==========================================================
-    if collision.get("collision_avoidance_ground", False):
+    if collision["collision_avoidance_ground"]:
 
-        if collision.get("ground_plane") is None:
+        if collision["ground_plane"] is None:
             raise ValueError("collision_avoidance_ground=True but no ground_plane defined")
 
         for link_name, ground_name in collision["collision_pairs"].get("ground", []):
@@ -803,7 +795,7 @@ def segment_segment_squared_distance():
         ["dist2", "s", "t", "c1", "c2"]
     )
 
-def build_obstacle_collision_constraints(robot_sys, links, obstacles, collision_pairs):
+def build_obstacle_collision_constraints(robot_sys, links, obstacles, collision_pairs, p_obs):
     constraints = []
 
     for link_name, obs_name in collision_pairs:
@@ -816,8 +808,10 @@ def build_obstacle_collision_constraints(robot_sys, links, obstacles, collision_
         r1 = link["radius"]
 
         obs = obstacles[obs_name]
-        p2 = obs["from"]
-        q2 = obs["to"]
+        # p2 = obs["from"]
+        # q2 = obs["to"]
+        p2 = p_obs[:3]
+        q2 = p_obs[3:]
         r2 = obs["radius"]
 
         dist2, s, t, c1, c2 = seg_seg_sq_dist(p1, q1, p2, q2)

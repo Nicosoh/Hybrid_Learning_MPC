@@ -54,14 +54,12 @@ def main(run_folder):
 
     # Load collision_config
     if model_config["collision"]["collision_avoidance_obstacle"] or model_config["collision"]["collision_avoidance_ground"]:                                                      # If enabled in config
-        collision_config, model_config = load_collision_config(model_config)                                        # Load obstacles
-    else:
-        collision_config = None
+        model_config = load_collision_config(model_config)                                        # Load obstacles
 
     # ----------------------------
     # Run replay
     # ----------------------------
-    replay = MujocoReplay(model_config, replay_config, logs_dict, collision_config)
+    replay = MujocoReplay(model_config, replay_config, logs_dict)
     replay.run()
 
 

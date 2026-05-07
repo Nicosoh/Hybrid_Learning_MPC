@@ -43,9 +43,7 @@ def main(model_name, data_collection=False, output_dir=None, timestamp=None, dat
         config_save_path = os.path.join(run_dir, f"{model_name}config.yaml")
         # ======== Collisions/obstacles ========
         if config["collision"]["collision_avoidance_obstacle"] or config["collision"]["collision_avoidance_ground"]:                                                      # If enabled in config
-            collision_config, config = load_collision_config(config)                                        # Load obstacles
-        else:
-            collision_config = None
+            config = load_collision_config(config)                                        # Load obstacles
 
         # Only save yaml if not in data collection mode and saving yaml is enabled
         if not data_collection and config["data"]["save_yaml"]:
@@ -59,7 +57,7 @@ def main(model_name, data_collection=False, output_dir=None, timestamp=None, dat
             config["mpc"]["yref"] = yref.tolist()                                                           # Save yref to config
 
         else:                                                                                               # If dealing with manipulators
-            IK = InverseKinematicsSolver(config, collision_config)
+            IK = InverseKinematicsSolver(config)
             x0_q = IK.load_x0()                                                                                    # Load valid x0 in IK solver
             config = IK.config
             # Only save yaml if not in data collection mode and saving yaml is enabled
@@ -76,7 +74,7 @@ def main(model_name, data_collection=False, output_dir=None, timestamp=None, dat
         if not data_collection and config["data"]["save_yaml"]:
             save_yaml(config=config, save_path=config_save_path)                                                # Save summary with IK inputs
 
-        controller = CONTROLLER_REGISTRY[config["mpc"]["controller_name"]](config, collision_config, worker_id)        # Create MPCController
+        controller = CONTROLLER_REGISTRY[config["mpc"]["controller_name"]](config, worker_id)        # Create MPCController
         
         if config["VI"]["ground_truth_controller"]:
             # Make a **deep copy** of config so we don't touch the original
@@ -90,7 +88,7 @@ def main(model_name, data_collection=False, output_dir=None, timestamp=None, dat
                     GT_config[key] = value
                     
             # Create ground truth controller
-            gt_controller = CONTROLLER_REGISTRY[GT_config["mpc"]["controller_name"]](GT_config, collision_config, worker_id)
+            gt_controller = CONTROLLER_REGISTRY[GT_config["mpc"]["controller_name"]](GT_config, worker_id)
         else:
             gt_controller = None
 
@@ -98,7 +96,7 @@ def main(model_name, data_collection=False, output_dir=None, timestamp=None, dat
         start_time = time.time()
 
         # Create simulator object
-        simulator = MuJoCoSimulator(config, yref, controller, collision_config, gt_controller)
+        simulator = MuJoCoSimulator(config, yref, controller, gt_controller)
 
         # Run simulation
         simulator.run()
@@ -110,7 +108,7 @@ def main(model_name, data_collection=False, output_dir=None, timestamp=None, dat
 
         if data_collection: #quit here if data collection
             # List of keys you want to keep
-            keys_to_keep = ['qpos', 'qvel', 'total_cost', 'xyzpos', 'yref_xyz', 'yref_q', 'terminal_cost', 'GT_cost', 'sq_dist']
+            keys_to_keep = ['qpos', 'qvel', 'total_cost', 'xyzpos', 'yref_xyz', 'yref_q', 'terminal_cost', 'GT_cost', 'sq_dist', 'obstacles']
 
             # Delete everything else
             for key in list(simulator.logs.keys()):  # use list() to avoid runtime dict size change

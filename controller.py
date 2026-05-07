@@ -20,7 +20,7 @@ class BaseMPCController:
     '''
     Class for a basic MPC Controller, also a base class for other MPC controllers.
     '''
-    def __init__(self, config, collision_config=None, worker_id=0):
+    def __init__(self, config, worker_id=0):
         # Extract parameters from config
         self.config = config
         self.worker_id = worker_id
@@ -33,19 +33,19 @@ class BaseMPCController:
         # Reassign x0 if IK is used
         if self.IK_required:
             self.x0 = np.array(config["mpc"]["x0_q"])
+        
+        # Init parameters if needed
+        self.p_obs = None
+        self.p_NN = None
 
         # Setup MPC solver
-        self.setup(config, collision_config)
-
-        self.nx = self.ocp_solver.acados_ocp.dims.nx
-        self.nu = self.ocp_solver.acados_ocp.dims.nu
-        self.N = self.ocp_solver.acados_ocp.dims.N
+        self.setup(config)
 
         # Warm start
         for _ in range(5):
             self.ocp_solver.solve_for_x0(x0_bar=self.x0, fail_on_nonzero_status=False, print_stats_on_failure=False) # It is ok to fail during the warmup phase
 
-    def setup(self, config, collision_config):
+    def setup(self, config):
         mpc_config = config["mpc"]
 
         Fmax = mpc_config["Fmax"]
@@ -66,9 +66,8 @@ class BaseMPCController:
         nu = model.u.rows()
 
         # Generate obstacle collision constraints
-        if (collision_config is not None and 
-            (config["collision"]["collision_avoidance_obstacle"] or config["collision"]["collision_avoidance_ground"])):
-            self.add_hard_constraints(ocp, model, collision_config)
+        if config["collision"]["collision_avoidance_obstacle"] or config["collision"]["collision_avoidance_ground"]:
+            self.add_hard_constraints(ocp, model, config["collision"])
 
         # Set stage cost module
         self.define_stage_cost(ocp, model, config)
@@ -122,13 +121,36 @@ class BaseMPCController:
         ocp.solver_options.qp_solver_cond_N = N_horizon
         ocp.solver_options.nlp_solver_tol_stat = 1e-4
         # ocp.solver_options.qp_solver_iter_max
+        
+        # Finalize parameters, from obs if used, or/and NN input for yref and obs(center, rpy)
+        if self.p_obs is not None and self.p_NN is not None:
+            self.p = np.concatenate([self.obstacles_from_to, self.NN])
+            ocp.model.p = ca.vertcat(self.p_obs, self.p_NN)
+            ocp.parameter_values = np.zeros(ocp.model.p.shape[0])
+        elif self.p_obs is not None:
+            self.p = self.obstacles_from_to
+            ocp.model.p = self.p_obs
+            ocp.parameter_values = np.zeros(ocp.model.p.shape[0])
+        elif self.p_NN is not None:
+            self.p = self.NN
+            ocp.model.p = self.p_NN
+            ocp.parameter_values = np.zeros(ocp.model.p.shape[0])
 
-        # Create solver based on settings above
-        solver_json = 'acados_ocp_' + self.config["mpc"]["json_name"] + str(self.worker_id) + '.json'
+        # Unique json and export directory
+        solver_json = 'acados_json/acados_ocp_' + self.config["mpc"]["json_name"] + str(self.worker_id) + '.json'
+        ocp.code_export_directory = 'acados_c_generated_code/worker' + str(self.worker_id)
 
+        # Compile solver
         self.ocp_solver = AcadosOcpSolver(acados_ocp = ocp, json_file = solver_json, verbose=False, build=False, generate=False)
 
+        # Extract vars
+        self.nx = self.ocp_solver.acados_ocp.dims.nx
+        self.nu = self.ocp_solver.acados_ocp.dims.nu
+        self.N = self.ocp_solver.acados_ocp.dims.N
+
+        # Update params which are set to be consistent to avoid recompilation
         self.update_initial_guess(self.x0)
+        self.update_parameters()            # only used with NN or obstacles
 
     def update_initial_guess(self, x):
         x_inital_guess = np.tile(x, self.ocp_solver.acados_ocp.dims.N+1)
@@ -160,7 +182,10 @@ class BaseMPCController:
     
     def create_constraints_func(self, ocp, constraints):
         raise NotImplementedError("create_constraints_func method not implemented in BaseMPCController.")
-
+    
+    def update_parameters(self):
+        raise NotImplementedError("update_parameters method not implemented in BaseMPCController.")
+    
     def set_yref(self, yref_now):
         for stage in range(self.N):
             self.ocp_solver.cost_set(stage, "yref", yref_now, api='new')
@@ -338,8 +363,8 @@ class NNMPCController(BaseMPCController):
     '''
     Class for testing trained terminal value approximation with single endpoint reference. Can be used with or without terminal cost component.
     '''
-    def __init__(self, config, collision_config=None, worker_id=0):
-        super().__init__(config, collision_config, worker_id=worker_id)
+    def __init__(self, config, worker_id=0):
+        super().__init__(config, worker_id=worker_id)
 
         if not config["mpc"]["terminal_cost"]:
             raise ValueError("NNMPCController requires terminal cost to be True.")
@@ -381,19 +406,29 @@ class ManipulatorMPCController(BaseMPCController):
     Class for a basic MPC Controller with trajectory tracking and IK used for trajectory generation. Can be used with or without terminal cost component.
     Specifically for manipulator models or models which require IK. Tracking in joint space.
     '''
-    def __init__(self, config, collision_config=None, worker_id=0):        
-        super().__init__(config, collision_config, worker_id=worker_id)
+    def __init__(self, config, worker_id=0):        
+        super().__init__(config, worker_id=worker_id)
 
     def add_hard_constraints(self, ocp, model, collision_config):
         # Generate collision constraints
         constraint_list = []
 
         if self.config["collision"]["collision_avoidance_obstacle"]:
+            self.obs1_config = collision_config["obstacles"]["obs1"] # Assuming obs1 is the relevant obstacle for now
+
+            # Extract obs1 info for parameters
+            obs1_from = np.array(collision_config["obstacles"]["obs1"]["from"])
+            obs1_to = np.array(collision_config["obstacles"]["obs1"]["to"])
+
+            self.obstacles_from_to = np.concatenate([obs1_from, obs1_to])               # Property to save the actual location
+            self.p_obs = ca.SX.sym('p_obs', self.obstacles_from_to.shape[0])            # Property to save the casadi symbols
+
             obstacle_constraints = build_obstacle_collision_constraints(
                 self.robot_sys,
                 collision_config["links"],
                 collision_config["obstacles"],
                 collision_config["collision_pairs"]["obstacle"],
+                self.p_obs
             )
             constraint_list.append(obstacle_constraints)
 
@@ -445,9 +480,9 @@ class ManipulatorMPCController(BaseMPCController):
     def create_constraints_func(self, ocp, constraints):
         self.collision_constraint_fun = ca.Function(
             "collision_constraint_fun",
-            [ocp.model.x],
+            [ocp.model.x, self.p_obs],
             [constraints],
-            ["x"],
+            ["x", "p_obs"],
             ["h"]
             )
     
@@ -457,7 +492,7 @@ class ManipulatorMPCController(BaseMPCController):
 
         x = np.concatenate([qpos, qvel])
 
-        sq_dist = np.array(self.collision_constraint_fun(x)).squeeze()
+        sq_dist = np.array(self.collision_constraint_fun(x, self.p[:self.p_obs.shape[0]])).squeeze()
 
         return sq_dist
     
@@ -466,6 +501,11 @@ class ManipulatorMPCController(BaseMPCController):
             self.ocp_solver.cost_set(stage, "yref", yref_now["stage"][stage], api='new')
         if self.terminal_cost:
             self.ocp_solver.cost_set(self.N, "yref", yref_now["terminal"][:self.ny_e], api='new')  # Terminal reference (only x)
+    
+    def update_parameters(self):
+        # Stage & Terminal
+        for stage in range(self.N+1):
+            self.ocp_solver.set(stage, "p", self.p)                                             # Modify Goal/obstacle position
 
 @register_controller
 class NNManipulatorMPCController(ManipulatorMPCController):
@@ -474,8 +514,8 @@ class NNManipulatorMPCController(ManipulatorMPCController):
     Specifically for manipulator models or models which require IK.
     '''
 
-    def __init__(self, config, collision_config=None, worker_id=0):
-        super().__init__(config, collision_config, worker_id=worker_id)
+    def __init__(self, config, worker_id=0):
+        super().__init__(config, worker_id=worker_id)
 
         if not config["mpc"]["terminal_cost"]:
             raise ValueError("NNMPCController requires terminal cost to be True.")
@@ -529,8 +569,8 @@ class ManipulatorMPCController_eeTracker(ManipulatorMPCController):
     Same as ManipulatorMPCController but cost formulation is a hybrid of end-effector space tracking and joint velocities, input regularisation.
     to do: modify stage cost, modify set_yref??, modify terminal cost as well, modify compute stage cost and terminal cost.
     '''
-    def __init__(self, config, collision_config=None, worker_id=0):        
-        super().__init__(config, collision_config, worker_id=worker_id)
+    def __init__(self, config, worker_id=0):        
+        super().__init__(config,  worker_id=worker_id)
 
         if not config["IK"]["output_xyz"]:
             raise ValueError("NNMPCController_eeTracker requires IK output to be in xyz format.")
@@ -669,8 +709,8 @@ class ManipulatorMPCController_eeTracker(ManipulatorMPCController):
 
 @register_controller
 class ManipulatorMPCController_eeTracker_point(ManipulatorMPCController_eeTracker):
-    def __init__(self, config, collision_config=None, worker_id=0):
-        super().__init__(config, collision_config, worker_id=worker_id)
+    def __init__(self, config, worker_id=0):
+        super().__init__(config, worker_id=worker_id)
 
     def set_yref(self, yref_now):
         for stage in range(self.N):
@@ -691,8 +731,8 @@ class NNManipulatorMPCController_eeTracker(ManipulatorMPCController_eeTracker, N
     - IK_required: false during tesing, true during data generation
 
     '''
-    def __init__(self, config, collision_config=None, worker_id=0):
-        super().__init__(config, collision_config, worker_id=worker_id)
+    def __init__(self, config, worker_id=0):
+        super().__init__(config, worker_id=worker_id)
     
     def define_terminal_cost(self, ocp, model, config):
         ocp.cost.cost_type_e = 'NONLINEAR_LS'               # Terminal cost
@@ -704,14 +744,13 @@ class NNManipulatorMPCController_eeTracker(ManipulatorMPCController_eeTracker, N
         self.ny_e = self.ee_expr.shape[0]+ nx//2
 
         # Create parameters for goal, obstacle
-        self.p = np.array(self.config["mpc"]["yref"])
-        ocp.model.p = SX.sym('p', self.p.shape[0])  # Full yref as parameter
-        ocp.parameter_values = np.zeros(self.p.shape[0])
+        self.NN = np.array(self.config["mpc"]["yref"])
+        self.p_NN = SX.sym('p', self.NN.shape[0])                    # Symbolic vars
 
         # Export trained NN model
         self.l4c_model = export_torch_model(config, self.worker_id)
         # Evaluate NN symbolically
-        y_sym = self.l4c_model(ca.transpose(vertcat(model.x, ocp.model.p, self.ee_expr)))
+        y_sym = self.l4c_model(ca.transpose(vertcat(model.x, self.p_NN, self.ee_expr)))
         ocp.model.cost_y_expr_e = ca.transpose(y_sym)
         # Link shared library
         ocp.solver_options.model_external_shared_lib_dir = self.l4c_model.shared_lib_dir
@@ -727,7 +766,7 @@ class NNManipulatorMPCController_eeTracker(ManipulatorMPCController_eeTracker, N
         ee_val = np.array(self.ee_fun(q_final)).squeeze()
 
         # Build NN input (must match symbolic definition)
-        xN_p = np.concatenate([xN, self.p, ee_val])
+        xN_p = np.concatenate([xN, self.p[-self.p_NN.shape[0]:], ee_val])
 
         # Evaluate NN
         yN = np.asarray(self.l4c_model(xN_p)).squeeze()
@@ -739,8 +778,8 @@ class NNManipulatorMPCController_eeTracker(ManipulatorMPCController_eeTracker, N
 
 @register_controller
 class NNManipulatorMPCController_eeTracker_point(NNManipulatorMPCController_eeTracker):
-    def __init__(self, config, collision_config=None, worker_id=0):
-        super().__init__(config, collision_config, worker_id=worker_id)
+    def __init__(self, config, worker_id=0):
+        super().__init__(config, worker_id=worker_id)
 
         if not config["IK"]["point_reference"]:
             raise ValueError("NNManipulatorMPCController_eeTracker_point requires point_reference to be True.")
@@ -755,3 +794,37 @@ class NNManipulatorMPCController_eeTracker_point(NNManipulatorMPCController_eeTr
         if self.terminal_cost:
             self.ocp_solver.cost_set(self.N, "yref", np.zeros((64,)), api='new')                  # Terminal reference (only x)
             self.ocp_solver.set(self.N, "p", self.p)                                             # Modify Goal/obstacle position
+
+@register_controller
+class NNManipulatorMPCController_eeTracker_point_obs(NNManipulatorMPCController_eeTracker_point):
+    def __init__(self, config, worker_id=0):
+        super().__init__(config, worker_id=worker_id)
+
+        if not config["collision"]["collision_avoidance_obstacle"]:
+            raise ValueError("NNManipulatorMPCController_eeTracker_point_obs requires collision_avoidance_obstacle to be True.")
+
+    def define_terminal_cost(self, ocp, model, config):
+        ocp.cost.cost_type_e = 'NONLINEAR_LS'               # Terminal cost
+        ocp.cost.W_e = np.eye(64)                      # Weights set to 1, meaning no scaling for the NN output
+        ocp.cost.yref_e = np.zeros((64, ))                   # Set terminal reference to zero for NN output
+
+        # Extract joint velocities (Not actually used but required to build references)
+        nx = model.x.rows()
+        self.ny_e = self.ee_expr.shape[0]+ nx//2
+
+        # Create parameters for goal, obstacle
+        center = np.array(self.obs1_config["center"])
+        rpy = np.array([self.obs1_config["rpy"][1]]) # Modify later for iiwa14
+        yref = np.array(self.config["mpc"]["yref"])
+
+        self.NN = np.concatenate([center, rpy, yref])               # Actual values 
+        self.p_NN = SX.sym('p', self.NN.shape[0])                    # Symbolic vars
+
+        # Export trained NN model
+        self.l4c_model = export_torch_model(config, self.worker_id)
+        # Evaluate NN symbolically
+        y_sym = self.l4c_model(ca.transpose(vertcat(model.x, self.p_NN, self.ee_expr)))
+        ocp.model.cost_y_expr_e = ca.transpose(y_sym)
+        # Link shared library
+        ocp.solver_options.model_external_shared_lib_dir = self.l4c_model.shared_lib_dir
+        ocp.solver_options.model_external_shared_lib_name = self.l4c_model.name

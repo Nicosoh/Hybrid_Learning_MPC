@@ -17,9 +17,9 @@ from pinocchio.robot_wrapper import RobotWrapper
 from pink.limits import AccelerationLimit
 
 class InverseKinematicsSolver:
-    def __init__(self, config, collision_config=None):
+    def __init__(self, config):
         self.config = config
-        self.collision_config = collision_config
+        self.collision_config = config["collision"]
 
         self.zone_idx = self.sample_zone()
         self.config["mpc"]["zone_idx"] = self.zone_idx
@@ -268,7 +268,7 @@ class InverseKinematicsSolver:
         )
     
     def distance_check(self, q):
-        if self.collision_config is not None:
+        if self.collision_config["collision_avoidance_obstacle"] or self.collision_config["collision_avoidance_ground"]:
             pin.forwardKinematics(self.robot.model, self.robot.data, q)
             pin.updateGeometryPlacements(
                 self.robot.model,
@@ -300,12 +300,12 @@ class InverseKinematicsSolver:
         except FileNotFoundError:
             raise FileNotFoundError(f"Model file '{filename}' does not exist. Check your models_xml folder.")
         
-        if self.collision_config is not None:
-            if self.collision_config["collision_avoidance_obstacle"]:
-                self.add_obstacle_capsules()
-            if self.collision_config["collision_avoidance_ground"]:
-                self.add_ground_plane()
-            
+        if self.collision_config["collision_avoidance_obstacle"]:
+            self.add_obstacle_capsules()
+        if self.collision_config["collision_avoidance_ground"]:
+            self.add_ground_plane()
+
+        if self.collision_config["collision_avoidance_obstacle"] or self.collision_config["collision_avoidance_ground"]:
             self.robot.collision_data = process_collision_pairs(
                 self.robot.model,
                 self.robot.collision_model,
@@ -375,9 +375,9 @@ class InverseKinematicsSolver:
         obstacles_dict = self.collision_config["obstacles"]
 
         for name, obs in obstacles_dict.items():
-            p0 = obs["from"]
-            p1 = obs["to"]
-            radius = obs["radius"]
+            p0 = np.array(obs["from"])
+            p1 = np.array(obs["to"])
+            radius = float(obs["radius"])
 
             # Compute capsule length and placement
             vec = p1 - p0

@@ -127,71 +127,39 @@ def run_data_collector(model_name, data_config_path="data_collection/data_config
     # Save config used
     save_yaml(data_config, os.path.join(output_dir, "data_config.yaml"))
 
-    # Split n_runs roughly evenly across workers
+    # 1. Properly group indices for the workers
     run_indices_per_worker = [[] for _ in range(n_workers)]
     for i in range(n_runs):
         run_indices_per_worker[i % n_workers].append(i)
 
+    # 2. Package jobs (one job per worker)
+    # Filter out empty lists if n_runs < n_workers
+    jobs = [
+        (w_id, indices, model_name, output_dir, data_config, config)
+        for w_id, indices in enumerate(run_indices_per_worker) if indices
+    ]
+
     start_time = time.time()
     all_logs = {}
+    
+    tprint(f"Starting {len(jobs)} parallel worker groups...")
 
-    tprint(f"Launching {n_workers} workers for {n_runs} runs")
-
-    ### === PHASE 1: First iteration (1 job per worker) === ###
-    tprint("--- Phase 1: Running first iteration for each worker sequentially ---")
-    first_runs_per_worker = [runs[0] for runs in run_indices_per_worker if runs]  # take the first run
-    for worker_id, run_index in enumerate(first_runs_per_worker):
-        logs = worker(
-            worker_id=worker_id,
-            run_indices=[run_index],  # single run
-            model_name=model_name,
-            output_dir=output_dir,
-            data_config=data_config,
-            config=config,
-        )
-        all_logs.update(logs)
-
-    ### === PHASE 2: Remaining runs asynchronously === ###
-    tprint("--- Phase 2: Running remaining jobs asynchronously ---")
-    remaining_indices_per_worker = [
-        runs[1:] if len(runs) > 1 else [] for runs in run_indices_per_worker
-    ]
-
-    # Only launch workers that have remaining runs
-    workers_with_remaining = [
-        (w_id, runs) for w_id, runs in enumerate(remaining_indices_per_worker) if runs
-    ]
-
-    # Submit to job pool
-    if workers_with_remaining:
-        with ProcessPoolExecutor(max_workers=len(workers_with_remaining)) as executor:
-            futures = [
-                executor.submit(
-                    worker,
-                    worker_id=w_id,
-                    run_indices=runs,
-                    model_name=model_name,
-                    output_dir=output_dir,
-                    data_config=data_config,
-                    config=config,
-                )
-                for w_id, runs in workers_with_remaining
-            ]
-
-            # Check result
-            for future in as_completed(futures):
-                try:
-                    logs = future.result()  # Returns log from main()
-                    all_logs.update(logs)   # Add to all_logs
-                    tprint(f"Collected logs. Total runs so far: {len(all_logs)}/{n_runs}")
-
-                except Exception as e:
-                    error_msg = f"ERROR: A worker failed with {type(e).__name__}: {e}"
-                    tprint(error_msg)
-                    tprint(f"Full traceback:")
-                    import traceback
-                    traceback.print_exc()
-                    tprint(f"Continuing to collect results from other workers...")
+    # 3. Submit grouped jobs
+    with ProcessPoolExecutor(max_workers=n_workers) as executor:
+        futures = {executor.submit(worker, *job): job[0] for job in jobs}
+        
+        for future in as_completed(futures):
+            worker_id = futures[future]
+            try:
+                result = future.result()
+                if "error" in result:
+                    tprint(f"Worker {worker_id} finished with errors.")
+                    all_logs.update(result.get("partial_logs", {}))
+                else:
+                    all_logs.update(result)
+                    tprint(f"Worker {worker_id} completed all assigned tasks.")
+            except Exception as e:
+                tprint(f"Worker {worker_id} process crashed: {e}")
 
     elapsed = time.time() - start_time
 
@@ -210,3 +178,188 @@ if __name__ == "__main__":
     print(f"Starting data collection for model: {args.model}")
     run_data_collector(args.model)
     print("Done.")
+
+# import sys
+# import time
+# import yaml
+# import traceback
+# import random
+# import numpy as np
+# import multiprocessing as mp
+# from datetime import datetime
+# from concurrent.futures import ProcessPoolExecutor, as_completed
+# import os
+# import argparse
+
+# # =========================================================
+# # Worker (single run)
+# # =========================================================
+# def worker(worker_id, run_index, model_name, output_dir, data_config, config):
+#     # Imports must be inside the worker for ProcessPool compatibility in "spawn" mode
+#     import os
+#     import sys
+#     import traceback
+#     import random
+#     import numpy as np
+#     from datetime import datetime
+#     # Late import of main to ensure worker environment is set
+#     try:
+#         from main import main
+#     except ImportError:
+#         return {"error": "Could not import main", "run_index": run_index}
+
+#     def tprint_log(file, *args, **kwargs):
+#         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#         print(f"[{ts}]", *args, file=file, **kwargs)
+#         file.flush()
+
+#     # Isolate CPU usage
+#     os.environ["OMP_NUM_THREADS"] = "1"
+
+#     worker_output_dir = os.path.join(output_dir, f"worker_{worker_id}")
+#     os.makedirs(worker_output_dir, exist_ok=True)
+#     log_file_path = os.path.join(worker_output_dir, f"worker_{worker_id}.log")
+
+#     # Seed based on run_index for variety
+#     run_seed = worker_id
+#     random.seed(run_seed)
+#     np.random.seed(run_seed)
+
+#     run_timestamp = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S-%f')}_run{run_index}"
+    
+#     try:
+#         with open(log_file_path, "a") as log_file:
+#             # We don't reassign sys.stdout globally to avoid silencing the scheduler.
+#             # Instead, we catch the output if main() doesn't support a logger.
+#             # If main() has its own prints, you can use a contextlib.redirect_stdout here.
+#             from contextlib import redirect_stdout, redirect_stderr
+            
+#             with redirect_stdout(log_file), redirect_stderr(log_file):
+#                 tprint_log(log_file, "=" * 60)
+#                 tprint_log(log_file, f"[Worker {worker_id}] START run {run_index}")
+#                 tprint_log(log_file, f"Timestamp: {run_timestamp}")
+#                 tprint_log(log_file, "=" * 60)
+
+#                 logs = main(
+#                     model_name,
+#                     data_collection=True,
+#                     output_dir=worker_output_dir,
+#                     timestamp=run_timestamp,
+#                     data_config=data_config,
+#                     config=config,
+#                     worker_id=worker_id,
+#                 )
+
+#                 tprint_log(log_file, f"[Worker {worker_id}] SUCCESS run {run_index}\n")
+                
+#             return {run_timestamp: logs}
+
+#     except Exception:
+#         err = traceback.format_exc()
+#         return {"error": err, "run_index": run_index}
+
+# # =========================================================
+# # Main scheduler
+# # =========================================================
+# def run_data_collector(model_name, data_config_path="data_collection/data_config.yaml", run_dir=None, config=None):
+#     from utils import save_yaml
+#     from data_collection import save_npz
+
+#     def tprint(*args, **kwargs):
+#         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#         print(f"[{ts}]", *args, **kwargs)
+
+#     # Load data_collector config
+#     if not os.path.exists(data_config_path):
+#         print(f"Error: Config file {data_config_path} not found.")
+#         return
+
+#     with open(data_config_path, "r") as f:
+#         data_config = yaml.safe_load(f)["data_collector"]
+
+#     n_runs = data_config.get("runs", 1)
+#     max_workers_cfg = data_config.get("workers", 1)
+#     n_workers = min(mp.cpu_count(), max_workers_cfg)
+
+#     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+#     output_dir = run_dir if run_dir else os.path.join("data", f"{timestamp}_{model_name}_data_collection")
+#     os.makedirs(output_dir, exist_ok=True)
+
+#     save_yaml(data_config, os.path.join(output_dir, "data_config.yaml"))
+
+#     start_time = time.time()
+#     all_logs = {}
+#     completed_runs = 0
+
+#     tprint(f"Launching {n_workers} workers for {n_runs} runs")
+
+#     # Initial job list
+#     remaining_jobs = [
+#         (i % n_workers, i, model_name, output_dir, data_config, config)
+#         for i in range(n_runs)
+#     ]
+
+#     # Use ProcessPoolExecutor to truly bypass the GIL
+#     with ProcessPoolExecutor(max_workers=n_workers) as executor:
+#         attempt = 0
+#         max_rounds = 5 
+
+#         while remaining_jobs and attempt < max_rounds:
+#             attempt += 1
+#             if attempt > 1:
+#                 tprint(f"=== Scheduler round {attempt}, retrying {len(remaining_jobs)} failed jobs ===")
+
+#             futures = {executor.submit(worker, *job): job for job in remaining_jobs}
+#             next_round_jobs = []
+
+#             for fut in as_completed(futures):
+#                 job = futures[fut]
+#                 run_index = job[1]
+
+#                 try:
+#                     result = fut.result()
+
+#                     if result and "error" in result:
+#                         tprint(f"Run {run_index} failed (see worker log) → retry next round")
+#                         next_round_jobs.append(job)
+#                     else:
+#                         all_logs.update(result)
+#                         completed_runs += 1
+#                         tprint(f"Progress: [{completed_runs}/{n_runs}] runs completed.")
+
+#                 except Exception as e:
+#                     tprint(f"Run {run_index} crashed the process: {e}")
+#                     next_round_jobs.append(job)
+
+#             remaining_jobs = next_round_jobs
+            
+#     if remaining_jobs:
+#         tprint(f"WARNING: {len(remaining_jobs)} runs failed after {max_rounds} attempts.")
+#     else:
+#         tprint("All runs completed successfully 🎉")
+
+#     # Save results
+#     save_npz(
+#         f"{timestamp}_{model_name}_logs.npz",
+#         data=all_logs,
+#         output_dir=output_dir,
+#     )
+
+#     tprint("=== DONE ===")
+#     tprint(f"Elapsed: {time.time() - start_time:.2f}s")
+#     tprint(f"Results saved to: {output_dir}")
+
+
+# # =========================================================
+# # Entry point
+# # =========================================================
+# if __name__ == "__main__":
+#     # Crucial for Windows/macOS and robustness with CUDA/Multiprocessing
+#     mp.set_start_method("spawn", force=True)
+
+#     parser = argparse.ArgumentParser(description="Run a model by name")
+#     parser.add_argument("model", type=str, help="Name of the model to run")
+#     args = parser.parse_args()
+
+#     print(f"Starting data collection for model: {args.model}")
+#     run_data_collector(args.model)

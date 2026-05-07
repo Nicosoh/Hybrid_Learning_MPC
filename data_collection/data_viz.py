@@ -308,7 +308,6 @@ def plot_traj(
 
     for run_key in run_keys:
         if "u_applied" not in all_logs[run_key]:
-            print(f"Skipping {run_key} — no 'u_applied'")
             continue
 
         u_applied = all_logs[run_key]["u_applied"]
@@ -562,39 +561,46 @@ def plot_dist(
 
     centers = []
     rpys = []
+    plotted_any = False
 
     for run_key in run_keys:
+        if "obstacles" not in all_logs[run_key]:
+            continue
+
         obs = all_logs[run_key]["obstacles"].item()["obs1"]
 
         centers.append(obs["center"])  # (3,)
         rpys.append(obs["rpy"])        # (3,)
 
-    centers = np.array(centers)  # (N, 3)
-    rpys = np.array(rpys)        # (N, 3)
+        plotted_any = True
 
-    center_labels = ["X", "Y", "Z"]
-    rpy_labels = ["Roll", "Pitch", "Yaw"]
+    if plotted_any:
+        centers = np.array(centers)  # (N, 3)
+        rpys = np.array(rpys)        # (N, 3)
 
-    # ---- Row 1: Centers ----
-    for i in range(3):
-        ax = axes_obs[0, i]
-        ax.hist(centers[:, i], bins=40, alpha=0.7)
-        ax.set_title(f"Center {center_labels[i]}")
-        ax.set_xlabel("Value")
-        ax.set_ylabel("Frequency")
-        ax.grid(True)
+        center_labels = ["X", "Y", "Z"]
+        rpy_labels = ["Roll", "Pitch", "Yaw"]
+    
+        # ---- Row 1: Centers ----
+        for i in range(3):
+            ax = axes_obs[0, i]
+            ax.hist(centers[:, i], bins=40, alpha=0.7)
+            ax.set_title(f"Center {center_labels[i]}")
+            ax.set_xlabel("Value")
+            ax.set_ylabel("Frequency")
+            ax.grid(True)
 
-    # ---- Row 2: RPY ----
-    for i in range(3):
-        ax = axes_obs[1, i]
-        ax.hist(rpys[:, i], bins=40, alpha=0.7)
-        ax.set_title(f"{rpy_labels[i]}")
-        ax.set_xlabel("Radians")
-        ax.set_ylabel("Frequency")
-        ax.grid(True)
+        # ---- Row 2: RPY ----
+        for i in range(3):
+            ax = axes_obs[1, i]
+            ax.hist(rpys[:, i], bins=40, alpha=0.7)
+            ax.set_title(f"{rpy_labels[i]}")
+            ax.set_xlabel("Radians")
+            ax.set_ylabel("Frequency")
+            ax.grid(True)
 
-    fig_obs.tight_layout()
-    fig_obs.savefig(os.path.join(save_dir, "Obstacle_histogram_plots.png"))
+        fig_obs.tight_layout()
+        fig_obs.savefig(os.path.join(save_dir, "Obstacle_histogram_plots.png"))
 
     plt.show()
 

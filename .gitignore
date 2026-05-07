@@ -6,8 +6,8 @@ dist/
 wheels/
 *.egg-info
 .ipynb_checkpoints
-c_generated_code*
-acados
+acados_c_generated_code
+acados_json
 *.json
 *.ruff_cache
 archive

@@ -137,11 +137,11 @@ class BaseMPCController:
             ocp.parameter_values = np.zeros(ocp.model.p.shape[0])
 
         # Unique json and export directory
-        solver_json = 'acados_ocp_' + self.config["mpc"]["json_name"] + str(self.worker_id) + '.json'
-        ocp.code_export_directory = 'c_generated_code' + str(self.worker_id)
+        solver_json = 'acados_json/acados_ocp_' + self.config["mpc"]["json_name"] + str(self.worker_id) + '.json'
+        ocp.code_export_directory = 'acados_c_generated_code/worker' + str(self.worker_id)
 
         # Compile solver
-        self.ocp_solver = AcadosOcpSolver(acados_ocp = ocp, json_file = solver_json, verbose=True, build=False, generate=False)
+        self.ocp_solver = AcadosOcpSolver(acados_ocp = ocp, json_file = solver_json, verbose=False, build=False, generate=False)
 
         # Extract vars
         self.nx = self.ocp_solver.acados_ocp.dims.nx

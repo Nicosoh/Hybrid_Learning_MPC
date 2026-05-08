@@ -32,6 +32,7 @@ mpc:
   # controller_name: "NNManipulatorMPCController_eeTracker_point_obs"
   Fmax: [2.5, 2.5] # Maximum force
   xmax: [3.142, 3.142, 1.0, 1.0]
+  xmin: [-3.142, -3.142, -1.0, -1.0]
   N_horizon: 20 # Prediction horizon
   use_RTI: true # Use Real-Time Iteration
   mpc_timestep: 0.01 # seconds

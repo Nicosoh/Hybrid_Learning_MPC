@@ -8,7 +8,7 @@ import configparser
 import os
 
 from datetime import datetime
-from neural_network.scripts import train_model, evaluate_model
+from neural_network.scripts import train_model, evaluate_model, train_model_TD
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -20,6 +20,12 @@ if __name__ == '__main__':
     # TRAIN_MODEL
     parser_train_model = subparsers.add_parser("train_model", help="Train the model")
     parser_train_model.add_argument(
+        'config_path', type=str, help='Path to .ini config file for training'
+    )
+
+    # TRAIN_MODEL_TD
+    parser_train_model_TD = subparsers.add_parser("train_model_TD", help="Train the model with TD")
+    parser_train_model_TD.add_argument(
         'config_path', type=str, help='Path to .ini config file for training'
     )
 
@@ -46,5 +52,10 @@ if __name__ == '__main__':
         config.read(args.config_path)
         print(f'Training with config from {args.config_path}')
         train_loss, stationary_ratios_mean = train_model(config, run_dir)
+    if args.script_name == 'train_model_TD':
+        config = configparser.ConfigParser()
+        config.read(args.config_path)
+        print(f'Training with config from {args.config_path}')
+        train_loss, stationary_ratios_mean = train_model_TD(config, run_dir)
     elif args.script_name == 'evaluate_model':
         evaluate_model(args.config_path, run_dir)

@@ -1,0 +1,13 @@
+model_name: TwoDofArm
+data_config_path: data_collection/data_config.yaml
+train_config_path: neural_network/configs/TwoDofArmModelTrainConfigTD.ini
+TD_loops: 1000
+controller_name: ManipulatorMPCController_eeTracker_point
+NN_controller_name: NNManipulatorMPCController_eeTracker_point
+
+fine_tune: true
+pretrained_weights:
+
+resume_training: false
+loop_to_resume_from: 
+TD_dir: ""

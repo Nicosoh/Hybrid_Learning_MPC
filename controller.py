@@ -33,10 +33,11 @@ class BaseMPCController:
         # Reassign x0 if IK is used
         if self.IK_required:
             self.x0 = np.array(config["mpc"]["x0_q"])
-        
+
         # Init parameters if needed
         self.p_obs = None
         self.p_NN = None
+        self.p = None
 
         # Setup MPC solver
         self.setup(config)
@@ -50,6 +51,7 @@ class BaseMPCController:
 
         Fmax = mpc_config["Fmax"]
         xmax = mpc_config["xmax"]
+        xmin = mpc_config["xmin"]
         N_horizon = mpc_config["N_horizon"]
         Tf = N_horizon * mpc_config["mpc_timestep"]  # Time horizon
 
@@ -84,9 +86,9 @@ class BaseMPCController:
         ocp.constraints.idxbu = np.arange(nu)
 
         # Set state constraints
-        ocp.constraints.lbx = -np.array(xmax)
+        ocp.constraints.lbx = np.array(xmin)
         ocp.constraints.ubx = np.array(xmax)
-        ocp.constraints.lbx_e = -np.array(xmax)
+        ocp.constraints.lbx_e = np.array(xmin)
         ocp.constraints.ubx_e = np.array(xmax)
 
         # Apply above to all states
@@ -504,8 +506,9 @@ class ManipulatorMPCController(BaseMPCController):
     
     def update_parameters(self):
         # Stage & Terminal
-        for stage in range(self.N+1):
-            self.ocp_solver.set(stage, "p", self.p)                                             # Modify Goal/obstacle position
+        if self.p is not None:
+            for stage in range(self.N+1):
+                self.ocp_solver.set(stage, "p", self.p)                                             # Modify Goal/obstacle position
 
 @register_controller
 class NNManipulatorMPCController(ManipulatorMPCController):

@@ -6,6 +6,7 @@ import numpy as np
 from torch.utils.data import Dataset, random_split
 from data_collection import load_npz
 from utils import get_num_config
+from neural_network.cost import compute_l2_cost
 
 class TwoDofArmDataset(Dataset):
     """
@@ -20,7 +21,7 @@ class TwoDofArmDataset(Dataset):
         self.run_dir = run_dir
         self.mode = mode
         self.log_space = config.getboolean("DATA", "log_space")
-
+        self.config = config
         # =============================================================
         #                     TRAIN MODE
         # =============================================================
@@ -235,3 +236,113 @@ class TwoDofArmDataset_eeTracker_obs(TwoDofArmDataset):
         self.Xs = torch.from_numpy(np.vstack(Xs_list)).float()
         self.y = torch.from_numpy(np.vstack(y_list)).float()
         self.ys = torch.from_numpy(np.vstack(ys_list)).float()
+
+class TwoDofArmDataset_eeTracker_TD(TwoDofArmDataset):
+    """
+    TD dataset for value function learning.
+
+    Returns:
+        X_t       : state at time t
+        X_tp1     : state at time t+1
+        cost_t    : stage cost
+        Xs        : stationary states (goal)
+    """
+
+    def __init__(self, config, model_config, run_dir, mode, test_config=None):
+        self.model_config = model_config
+        super().__init__(config, run_dir, mode, test_config)
+
+    def preprocess_data(self, data):
+
+        X_t_list = []
+        X_tp1_list = []
+        cost_t_list = []
+
+        Xs_list = []
+        ys_list = []
+
+        for run_key in data.keys():
+
+            run_data = data[run_key]
+
+            qpos = run_data["qpos"]
+            qvel = run_data["qvel"]
+            xyz = run_data["xyzpos"]
+
+            # ====================================================
+            # Cost
+            # ====================================================
+            cost = compute_l2_cost(
+                config=self.model_config,
+                xyz=xyz,
+                qvel=qvel,
+                yref_xyz=run_data["yref_xyz"],
+                u=run_data["u_applied"])
+            
+            if self.log_space:
+                cost = np.log1p(cost)
+
+            # ====================================================
+            # References
+            # ====================================================
+            yref = run_data["yref_xyz"]
+
+            yref_q = np.tile(run_data["yref_q"], (qpos.shape[0], 1))
+            yref_xyz = np.tile(yref, (qpos.shape[0], 1))
+
+            # ====================================================
+            # STATE: [qpos, qvel, goal, ee_pos]
+            # ====================================================
+            X = np.concatenate([qpos, qvel, yref_xyz, xyz], axis=1)
+
+            # ====================================================
+            # TD pairs
+            # ====================================================
+            X_t = X[:-1]
+            X_tp1 = X[1:]
+            cost_t = cost[:-1]
+            
+            X_t_list.append(X_t)
+            X_tp1_list.append(X_tp1)
+            cost_t_list.append(cost_t[:, None])
+
+            # ====================================================
+            # Stationary state (goal manifold)
+            # ====================================================
+            Xs_run = np.concatenate([
+                yref_q,                  # q at goal
+                np.zeros_like(qvel),     # zero velocity
+                yref_xyz,                # goal conditioning
+                yref_xyz                 # ee at goal
+            ], axis=1)
+
+            # repeat across time (important for stability)
+            Xs_list.append(Xs_run[:-1])
+
+            ys_run = np.zeros((qpos.shape[0] - 1, 1))
+
+            ys_list.append(ys_run)
+
+        # ====================================================
+        # Stack everything
+        # ====================================================
+        self.X_t = torch.from_numpy(np.vstack(X_t_list)).float()
+        self.X_tp1 = torch.from_numpy(np.vstack(X_tp1_list)).float()
+        self.Xs = torch.from_numpy(np.vstack(Xs_list)).float()
+        self.cost_t = torch.from_numpy(np.vstack(cost_t_list)).float()
+        self.ys = torch.from_numpy(np.vstack(ys_list)).float()
+
+    def train_val_data(self, val_split=0.2, seed=42):
+        dataset_size = len(self.X_t)
+        val_size = int(val_split * dataset_size)
+        train_size = dataset_size - val_size
+        generator = torch.Generator().manual_seed(seed) if seed is not None else None
+        self.train_dataset, self.val_dataset = random_split(
+            self, [train_size, val_size], generator=generator
+        )
+    
+    def __len__(self):
+        return self.X_t.shape[0]
+
+    def __getitem__(self, idx):
+        return self.X_t[idx], self.X_tp1[idx], self.Xs[idx], self.cost_t[idx], self.ys[idx]

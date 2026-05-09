@@ -115,6 +115,7 @@ data_viz = "python -m data_collection.data_viz"
 
 # Training model
 train_model = "python -m neural_network.main train_model"
+train_model_TD = "python -m neural_network.main train_model_TD"
 
 # Testing model
 evaluate_model = "python -m neural_network.main evaluate_model"
@@ -122,5 +123,11 @@ evaluate_model = "python -m neural_network.main evaluate_model"
 # Replay from saved data
 replay = "python replay.py"
 
+# Compare runs
+compare = "python comparison.py"
+
 # Run value iteration
 VI = "export DYLD_LIBRARY_PATH=\"$PWD/external/acados/lib:$DYLD_LIBRARY_PATH\" && python -m value_iteration.value_iteration"
+
+# Run TD
+TD = "export DYLD_LIBRARY_PATH=\"$PWD/external/acados/lib:$DYLD_LIBRARY_PATH\" && python -m TD.TD_learning"

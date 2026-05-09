@@ -108,7 +108,7 @@ def main(model_name, data_collection=False, output_dir=None, timestamp=None, dat
 
         if data_collection: #quit here if data collection
             # List of keys you want to keep
-            keys_to_keep = ['qpos', 'qvel', 'total_cost', 'xyzpos', 'yref_xyz', 'yref_q', 'terminal_cost', 'GT_cost', 'sq_dist', 'obstacles']
+            keys_to_keep = ['qpos', 'qvel', 'total_cost', 'u_applied', 'xyzpos', 'yref_xyz', 'yref_q', 'terminal_cost', 'GT_cost', 'sq_dist', 'obstacles']
 
             # Delete everything else
             for key in list(simulator.logs.keys()):  # use list() to avoid runtime dict size change

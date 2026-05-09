@@ -11,6 +11,9 @@
         <joint range="-2.96706 2.96706"/>
         <default class="joint2">
           <joint range="-2.0944 2.0944"/>
+          <default class="joint4">
+            <joint range="0.0 2.0944"/>
+          </default>
         </default>
       </default>
       <default class="joint3">
@@ -61,7 +64,7 @@
         <!-- <geom class="collision" name="collision_capsule1" type="capsule" fromto="0 0 -0.15 0 0 0.15" size="0.15" rgba="0.0 0.0 1.0 0.2"/> -->
         <body name="link2" pos="0 0 0.2025" quat="0 0 1 1">
           <inertial mass="6.35" pos="0.0003 0.059 0.042" diaginertia="0.0305 0.0304 0.011" quat="0 0 1 1"/>
-          <joint name="joint2" class="joint2"/>
+          <joint name="joint2" class="joint4"/>
           <geom class="visual" material="orange" mesh="link_2_orange"/>
           <geom class="visual" mesh="link_2_grey"/>
           <!-- <geom class="collision" name="collision_capsule2" type="capsule" fromto="0 0 0 0 0 0.028" size="0.12" rgba="0.0 1.0 0.0 0.2"/> -->
@@ -98,9 +101,9 @@
                     <inertial mass="1.2" pos="0 0 0.02" diaginertia="0.001 0.001 0.001"/>
                     <!-- <joint name="joint7" class="joint3"/> -->
                     <geom class="visual" mesh="link_7"/>
-                    <geom class="collision" name="collision_capsule7" type="capsule" fromto="0 0 0.0 0 0 0.005" size="0.06" rgba="0.0 0.0 1.0 0.2"/>
+                    <geom class="collision" name="collision_capsule7" type="capsule" fromto="0 0 0.0 0 0 0.055" size="0.06" rgba="0.0 0.0 1.0 0.2"/>
                     <site pos="0 0 0" name="c31" group="1"/>
-                    <site pos="0 0 0.005" name="c32" group="1"/>
+                    <site pos="0 0 0.055" name="c32" group="1"/>
                     <!-- <geom class="collision" size="0.06" pos="0 0 0.001"/> -->
                     <site pos="0 0 0.1" name="attachment_site" group="2"/>
                     <camera pos="2 0 2" xyaxes="0 1 0  -0.7071 0 0.7071" mode="trackcom"/>

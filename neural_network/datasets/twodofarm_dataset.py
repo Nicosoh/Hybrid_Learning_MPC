@@ -237,29 +237,57 @@ class TwoDofArmDataset_eeTracker_obs(TwoDofArmDataset):
         self.y = torch.from_numpy(np.vstack(y_list)).float()
         self.ys = torch.from_numpy(np.vstack(ys_list)).float()
 
-class TwoDofArmDataset_eeTracker_TD(TwoDofArmDataset):
+class TwoDofArmDataset_eeTracker_TD(Dataset):
     """
-    TD dataset for value function learning.
+    N-step TD dataset for value learning (NO discounting).
 
-    Returns:
-        X_t       : state at time t
-        X_tp1     : state at time t+1
-        cost_t    : stage cost
-        Xs        : stationary states (goal)
+    Target structure:
+
+        G_t^(n) = sum_{k=0}^{n-1} cost_{t+k}
+
+    Training target:
+
+        y_t = G_t^(n) + V(s_{t+n})
+
+    Returned:
+        X_t        : state at time t
+        X_tpn      : state at time t+n
+        cost_n     : cumulative n-step cost
+        Xs         : stationary goal states
+        ys         : terminal target (zeros)
     """
 
-    def __init__(self, config, model_config, run_dir, mode, test_config=None):
-        self.model_config = model_config
-        super().__init__(config, run_dir, mode, test_config)
+    def __init__(self, config, run_dir, mode, test_config=None):
+        self.run_dir = run_dir
+        self.mode = mode
+        self.config = config
+        self.log_space = self.config.getboolean("DATA", "log_space")
+        self.n_step = self.config.getint("TRAINING", "n_step")
 
+        # =============================================================
+        #                     TRAIN MODE
+        # =============================================================
+        if mode == "train":
+            # Load train data
+            data_path = self.config.get("DATA", "data_path")
+            data = load_npz(data_path)
+            self.preprocess_data(data)  # sets self.X and self.y
+
+        # =============================================================
+        #                     TEST MODE
+        # =============================================================
+        elif mode == "test":
+            raise NotImplementedError("Test mode not implemented for TD dataset")
     def preprocess_data(self, data):
 
         X_t_list = []
-        X_tp1_list = []
-        cost_t_list = []
+        X_tpn_list = []
+        cost_n_list = []
 
         Xs_list = []
         ys_list = []
+
+        n = self.n_step
 
         for run_key in data.keys():
 
@@ -270,79 +298,95 @@ class TwoDofArmDataset_eeTracker_TD(TwoDofArmDataset):
             xyz = run_data["xyzpos"]
 
             # ====================================================
-            # Cost
+            # Stage cost
             # ====================================================
-            cost = compute_l2_cost(
+            raw_cost = compute_l2_cost(
                 config=self.model_config,
                 xyz=xyz,
                 qvel=qvel,
                 yref_xyz=run_data["yref_xyz"],
-                u=run_data["u_applied"])
-            
-            if self.log_space:
-                cost = np.log1p(cost)
+                u=run_data["u_applied"]
+            )
 
             # ====================================================
-            # References
+            # Goal references
             # ====================================================
-            yref = run_data["yref_xyz"]
+            yref_xyz = np.tile(run_data["yref_xyz"], (qpos.shape[0], 1))
 
             yref_q = np.tile(run_data["yref_q"], (qpos.shape[0], 1))
-            yref_xyz = np.tile(yref, (qpos.shape[0], 1))
 
             # ====================================================
-            # STATE: [qpos, qvel, goal, ee_pos]
+            # STATE:
+            # [qpos, qvel, goal_xyz, ee_xyz]
             # ====================================================
             X = np.concatenate([qpos, qvel, yref_xyz, xyz], axis=1)
 
             # ====================================================
-            # TD pairs
+            # Stationary goal manifold
             # ====================================================
-            X_t = X[:-1]
-            X_tp1 = X[1:]
-            cost_t = cost[:-1]
-            
-            X_t_list.append(X_t)
-            X_tp1_list.append(X_tp1)
-            cost_t_list.append(cost_t[:, None])
+            Xs_run = np.concatenate([yref_q, np.zeros_like(qvel), yref_xyz, yref_xyz], axis=1)
+
+            T = X.shape[0]
 
             # ====================================================
-            # Stationary state (goal manifold)
+            # Build N-step TD samples
             # ====================================================
-            Xs_run = np.concatenate([
-                yref_q,                  # q at goal
-                np.zeros_like(qvel),     # zero velocity
-                yref_xyz,                # goal conditioning
-                yref_xyz                 # ee at goal
-            ], axis=1)
+            for t in range(T - n):
 
-            # repeat across time (important for stability)
-            Xs_list.append(Xs_run[:-1])
+                # --------------------------------------------
+                # Current state
+                # --------------------------------------------
+                X_t = X[t]
 
-            ys_run = np.zeros((qpos.shape[0] - 1, 1))
+                # --------------------------------------------
+                # Bootstrap state
+                # --------------------------------------------
+                X_tpn = X[t + n]
 
-            ys_list.append(ys_run)
+                # --------------------------------------------
+                # N-step cumulative cost
+                # NO discounting
+                # --------------------------------------------
+                cumulative_cost = np.sum(raw_cost[t:t+n])
+
+                # Log transform AFTER accumulation
+                if self.log_space:
+                    cumulative_cost = np.log1p(cumulative_cost)
+
+                # --------------------------------------------
+                # Goal stationary state
+                # --------------------------------------------
+                Xs = Xs_run[t]
+
+                # --------------------------------------------
+                # Terminal supervision target
+                # V(goal) = 0
+                # --------------------------------------------
+                y = np.array([0.0], dtype=np.float32)
+
+                # --------------------------------------------
+                # Append
+                # --------------------------------------------
+                X_t_list.append(X_t)
+                X_tpn_list.append(X_tpn)
+
+                cost_n_list.append(np.array([cumulative_cost], dtype=np.float32))
+
+                Xs_list.append(Xs)
+
+                ys_list.append(y)
 
         # ====================================================
         # Stack everything
         # ====================================================
         self.X_t = torch.from_numpy(np.vstack(X_t_list)).float()
-        self.X_tp1 = torch.from_numpy(np.vstack(X_tp1_list)).float()
+        self.X_tpn = torch.from_numpy(np.vstack(X_tpn_list)).float()
+        self.cost_n = torch.from_numpy(np.vstack(cost_n_list)).float()
         self.Xs = torch.from_numpy(np.vstack(Xs_list)).float()
-        self.cost_t = torch.from_numpy(np.vstack(cost_t_list)).float()
         self.ys = torch.from_numpy(np.vstack(ys_list)).float()
 
-    def train_val_data(self, val_split=0.2, seed=42):
-        dataset_size = len(self.X_t)
-        val_size = int(val_split * dataset_size)
-        train_size = dataset_size - val_size
-        generator = torch.Generator().manual_seed(seed) if seed is not None else None
-        self.train_dataset, self.val_dataset = random_split(
-            self, [train_size, val_size], generator=generator
-        )
-    
     def __len__(self):
         return self.X_t.shape[0]
 
     def __getitem__(self, idx):
-        return self.X_t[idx], self.X_tp1[idx], self.Xs[idx], self.cost_t[idx], self.ys[idx]
+        return (self.X_t[idx], self.X_tpn[idx], self.Xs[idx], self.cost_n[idx], self.ys[idx])

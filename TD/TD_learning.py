@@ -8,6 +8,7 @@ import numpy as np
 import subprocess
 import matplotlib.pyplot as plt
 
+from TD.replay_buffer import ReplayBuffer
 from utils import save_yaml
 
 def main():
@@ -74,11 +75,11 @@ def main():
     # Extract config from TD config
     model_name = TD_config["model_name"]
     data_config_path = TD_config["data_config_path"]
+    loop0_data_config_path = TD_config["loop0_data_config_path"]
     train_config_path = TD_config["train_config_path"]
     TD_loops = TD_config["TD_loops"]
-
     resume_training = TD_config["resume_training"]
-
+    
     # Check if resume training
     start_loop = 0
     main_timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -137,18 +138,30 @@ def main():
     # TD Loop, Zero indexed, so minus one from the folder number
     for loop in range(start_loop, TD_loops):
         log_td(f"=== Starting TD Loop {loop+1}/{TD_loops} ===")
-        
+
         # Spawn subprocess for this loop
-        cmd = [
-            sys.executable,
-            TD_loop_worker_path,
-            str(loop),
-            main_output_dir,
-            model_name,
-            data_config_path,
-            train_config_path,
-            TD_config_path,
-        ]
+        if loop == 0:
+            cmd = [
+                sys.executable,
+                TD_loop_worker_path,
+                str(loop),
+                main_output_dir,
+                model_name,
+                loop0_data_config_path,
+                train_config_path,
+                TD_config_path,
+                ]
+        else:
+            cmd = [
+                sys.executable,
+                TD_loop_worker_path,
+                str(loop),
+                main_output_dir,
+                model_name,
+                data_config_path,
+                train_config_path,
+                TD_config_path,
+                ]
         
         try: # Try to run the subprocess
             result = subprocess.run(cmd, check=False, capture_output=True, text=True)

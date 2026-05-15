@@ -26,8 +26,8 @@ pin:
 
 mpc:
   json_name: "main"
-  controller_name: "BaseMPCController"
-  # controller_name: "NNMPCController"
+  # controller_name: "BaseMPCController"
+  controller_name: "NNMPCController"
   Fmax: [1] # Maximum force
   xmax: [6.0, 5.0]
   xmin: [-6.0, -5.0]
@@ -43,7 +43,7 @@ mpc:
   yref: [0.0, 0.0, 0.0] # [angle, angular_velocity, input]
   Q_mat: [2000, 0.02] # State cost weights
   R_mat: [20] # Input cost weights
-  terminal_cost: false
+  terminal_cost: true
   early_termination_cost: true # Enable early termination based on cost
   termination_cost: 0.1 # Tolerance for early termination cost
   early_termination_state: false

@@ -17,6 +17,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from TD.replay_buffer import ReplayBuffer
 from neural_network.scripts import train_model_TD
 from data_collection.data_utils import load_npz
 from data_collection.data_collector import run_data_collector
@@ -50,11 +51,20 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
     loop_dir = os.path.join(main_output_dir, f"loop_{loop_num+1}")
     os.makedirs(loop_dir, exist_ok=True)
     
-    data_collection_dir = os.path.join(loop_dir, "data_collection")
+    data_dir = os.path.join(loop_dir, "data")
+    data_collection_dir = os.path.join(data_dir, "data_collection")
+    replay_buffer_dir = os.path.join(data_dir, "replay_buffer")
+
     training_dir = os.path.join(loop_dir, "training")
+    target_model_dir = os.path.join(loop_dir, "training/target_model")
+    online_model_dir = os.path.join(loop_dir, "training/online_model")
+
     os.makedirs(data_collection_dir, exist_ok=True)
+    os.makedirs(replay_buffer_dir, exist_ok=True)
     os.makedirs(training_dir, exist_ok=True)
-    
+    os.makedirs(target_model_dir, exist_ok=True)
+    os.makedirs(online_model_dir, exist_ok=True)
+
     worker_log_path = os.path.join(loop_dir, "worker.log")
     metrics_path = os.path.join(loop_dir, "metrics.json")
 
@@ -85,36 +95,42 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
         train_config.read(train_config_path)
         
         # Configure for this loop
-        if TD_config["fine_tune"] and loop_num == 0:
+        if loop_num == 0:
             model_config["mpc"]["controller_name"] = TD_config["NN_controller_name"]
             model_config["mpc"]["terminal_cost"] = True
-            model_config["NN"]["checkpoint_path"] = TD_config["pretrained_weights"]
+            model_config["NN"]["checkpoint_path"] = TD_config["pretrained_weights_path"]
             train_config.set("MODEL", "load_checkpoint", "True")
-            train_config.set("MODEL", "checkpoint_path", TD_config["pretrained_weights"])\
-            
-        elif loop_num == 0:
-            model_config["mpc"]["controller_name"] = TD_config["controller_name"]
-            model_config["mpc"]["terminal_cost"] = False
-            train_config.set("MODEL", "load_checkpoint", "False")
-
+            train_config.set("MODEL", "target_model_checkpoint_path", TD_config["pretrained_weights_path"])
+            train_config.set("MODEL", "online_model_checkpoint_path", TD_config["pretrained_weights_path"])
         else:
-            # Load from previous loop's best model
+            # Load from previous loop's best model and replay buffer
             prev_training_dir = os.path.join(main_output_dir, f"loop_{loop_num}", "training")
-            pt_files = glob.glob(os.path.join(prev_training_dir, "*.pt"))
-            
-            if len(pt_files) != 1:
+            prev_target_model_dir = os.path.join(prev_training_dir, "target_model")
+            prev_online_model_dir = os.path.join(prev_training_dir, "online_model")
+
+            prev_data_dir = os.path.join(main_output_dir, f"loop_{loop_num}", "data")
+            prev_replay_buffer_dir = os.path.join(prev_data_dir, "replay_buffer")
+
+            online_pt_files = glob.glob(os.path.join(prev_online_model_dir, "*.pt"))
+            target_pt_files = glob.glob(os.path.join(prev_target_model_dir, "*.pt"))
+            prev_replay_buffer_npz_files = glob.glob(os.path.join(prev_replay_buffer_dir, "*.npz"))
+
+            if len(online_pt_files) and len(target_pt_files) and len(prev_replay_buffer_npz_files) != 1:
                 raise RuntimeError(
-                    f"Expected exactly one .pt file in {prev_training_dir}, "
-                    f"found {len(pt_files)}"
+                    f"Expected exactly one .pt/ .npz file in {prev_training_dir}, "
+                    f"found {len(online_pt_files)} in online model dir and {len(target_pt_files)} in target model dir and {len(prev_replay_buffer_npz_files)} in replay buffer dir"
                 )
             
-            best_model_path = pt_files[0]
+            target_model_path = target_pt_files[0]
+            online_model_path = online_pt_files[0]
+            prev_replay_buffer_path = prev_replay_buffer_npz_files[0]
             train_config.set("MODEL", "load_checkpoint", "True")
-            train_config.set("MODEL", "checkpoint_path", best_model_path)
+            train_config.set("MODEL", "target_model_checkpoint_path", target_model_path)
+            train_config.set("MODEL", "online_model_checkpoint_path", online_model_path)
             model_config["mpc"]["controller_name"] = TD_config["NN_controller_name"]
             model_config["mpc"]["terminal_cost"] = True
-            model_config["NN"]["checkpoint_path"] = best_model_path
-        
+            model_config["NN"]["checkpoint_path"] = target_model_path
+
         # -----------------
         # Data Collection
         # -----------------
@@ -134,8 +150,20 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
                 f"Expected exactly one .npz file in {data_collection_dir}, "
                 f"found {len(npz_files)}"
             )
-        data_npz_path = npz_files[0]
-        
+        data_collection_npz_path = npz_files[0]
+
+        # Load previous replay buffer and add new data
+        replay_buffer = ReplayBuffer(TD_config["replay_buffer_capacity"])
+        replay_buffer_path = os.path.join(replay_buffer_dir, "replay_buffer.npz")
+
+        if loop_num == 0:
+            replay_buffer.add_npz_data(data_collection_npz_path, train_config, model_config)
+            replay_buffer.save_buffer(replay_buffer_path)
+        elif loop_num > 0:
+            replay_buffer.reinstate_buffer(prev_replay_buffer_path)
+            replay_buffer.add_npz_data(data_collection_npz_path, train_config, model_config)
+            replay_buffer.save_buffer(replay_buffer_path)
+
         # -----------------
         # Training
         # -----------------
@@ -143,13 +171,13 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
         train_loss, stationary_ratio_mean = train_model_TD(
             train_config,
             run_dir=training_dir,
-            data_path=data_npz_path,
+            capacity=TD_config["replay_buffer_capacity"],
+            data_path=replay_buffer_path,
         )
-        log_worker(worker_log_path, "Model training completed")
-        
+
         # Extract metrics
         log_worker(worker_log_path, "Extracting metrics")
-        data = load_npz(data_npz_path)
+        data = load_npz(data_collection_npz_path)
         
         ctrl_cost = []
         GT_cost = []
@@ -189,13 +217,11 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
             "train_loss": train_loss,
             "stationary_ratio_mean": stationary_ratio_mean
         }
-        
-        # Save metrics
         with open(metrics_path, "w") as f:
             json.dump(metrics, f, indent=2)
-        
-        log_worker(worker_log_path, f"Loop completed successfully")
-        log_worker(worker_log_path, f"Metrics: GT={gt_mean:.4f}, CTRL={ctrl_mean:.4f}, MSE={mse_mean:.4e}, Stationary Ratio={stationary_ratio_mean:.4f}")
+
+        log_worker(worker_log_path, "Model training completed")
+        log_worker(worker_log_path, f"Metrics: Train Loss={train_loss:.4f}, Stationary Ratio={stationary_ratio_mean:.4f}")
             
     except Exception as e:
         log_worker(worker_log_path, f"ERROR: {e}")
@@ -204,10 +230,6 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
         
         metrics = {
             "loop": loop_num + 1,
-            "gt_cost": None,
-            "ctrl_cost": None,
-            "mse": None,
-            "mse_std": None,
             "success": False,
             "error": str(e),
             "train_loss": None,

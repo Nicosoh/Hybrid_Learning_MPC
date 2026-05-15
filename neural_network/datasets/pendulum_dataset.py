@@ -17,6 +17,7 @@ class PendulumDataset(Dataset):
     def __init__(self, config, run_dir, mode, test_config=None):
         self.run_dir = run_dir
         self.mode = mode
+        self.log_space = config.getboolean("DATA", "log_space")
 
         # =============================================================
         #                     TRAIN MODE
@@ -58,6 +59,11 @@ class PendulumDataset(Dataset):
             qpos = run_data["qpos"]
             qvel = run_data["qvel"]
             cost = run_data["total_cost"]
+
+            if self.log_space:
+                cost = np.log1p(run_data["total_cost"])
+            else:
+                cost = run_data["total_cost"]
 
             # Concatenate qpos and qvel
             X_run = np.concatenate([qpos, qvel], axis=1)

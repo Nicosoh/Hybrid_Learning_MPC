@@ -1,3 +1,4 @@
+from colorlog import warning
 import scipy.linalg
 
 import numpy as np
@@ -186,7 +187,8 @@ class BaseMPCController:
         raise NotImplementedError("create_constraints_func method not implemented in BaseMPCController.")
     
     def update_parameters(self):
-        raise NotImplementedError("update_parameters method not implemented in BaseMPCController.")
+        warning("No parameters to update for this controller.")
+        pass
     
     def set_yref(self, yref_now):
         for stage in range(self.N):
@@ -375,18 +377,18 @@ class NNMPCController(BaseMPCController):
         for stage in range(self.N):
             self.ocp_solver.cost_set(stage, "yref", yref_now, api='new')
         if self.terminal_cost:
-            self.ocp_solver.cost_set(self.N, "yref", np.zeros((1,)), api='new')  # Terminal reference (only x)
+            self.ocp_solver.cost_set(self.N, "yref", np.zeros((64,)), api='new')  # Terminal reference (only x)
 
     def define_terminal_cost(self, ocp, model, config):
         self.ny_e = model.x.rows()
         ocp.cost.cost_type_e = 'NONLINEAR_LS'               # Terminal cost
-        ocp.cost.W_e = np.ones((1, 1))                      # Weights set to 1, meaning no scaling for the NN output
-        ocp.cost.yref_e = np.zeros((1, ))                   # Set terminal reference to zero for NN output
+        ocp.cost.W_e = np.eye(64)                      # Weights set to 1, meaning no scaling for the NN output
+        ocp.cost.yref_e = np.zeros((64, ))                   # Set terminal reference to zero for NN output
         # Export trained NN model
         self.l4c_model = export_torch_model(config, self.worker_id)
         # Evaluate NN symbolically
         y_sym = self.l4c_model(ca.transpose(model.x))
-        ocp.model.cost_y_expr_e = y_sym
+        ocp.model.cost_y_expr_e = ca.transpose(y_sym)
         # Link shared library
         ocp.solver_options.model_external_shared_lib_dir = self.l4c_model.shared_lib_dir
         ocp.solver_options.model_external_shared_lib_name = self.l4c_model.name
@@ -399,7 +401,8 @@ class NNMPCController(BaseMPCController):
         yN = np.asarray(self.l4c_model(xN)).squeeze()
 
         # NONLINEAR_LS terminal cost
-        terminal_cost = 0.5 * yN**2
+        terminal_cost = 0.5 * np.sum(yN**2)
+        
         return terminal_cost
 
 @register_controller

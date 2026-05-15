@@ -25,7 +25,7 @@ class PendulumModel(nn.Module):
         self.fc1 = nn.Linear(2, 64)
         self.fc2 = nn.Linear(64, 64)
         self.fc3 = nn.Linear(64, 64)
-        self.fc_out = nn.Linear(64, 1)
+        self.fc_out = nn.Linear(64, 64)
 
     def forward(self, x):
         x = self.fc0(x)                                                     # Linear transformation without activation ("scaling" layer)
@@ -33,9 +33,9 @@ class PendulumModel(nn.Module):
         x = F.tanh(self.fc2(x))
         x = F.tanh(self.fc3(x))
         x = self.fc_out(x)                                                     # Output layer without activation ("scaling" layer)
-        x = torch.tensor(0.5, dtype=x.dtype, device=x.device) * x**2        # Least Squares which mimics acados cost
+        x = torch.tensor(0.5, dtype=x.dtype, device=x.device) * torch.sum(x**2, dim=1, keepdim=True)        # Least Squares which mimics acados cost
 
-        return x
+        return torch.log1p(x)
     
 @register_model
 class PendulumModelAcados(PendulumModel):
@@ -47,7 +47,7 @@ class PendulumModelAcados(PendulumModel):
         x = F.tanh(self.fc1(x))                                             # Hidden layers with tanh activations
         x = F.tanh(self.fc2(x))
         x = F.tanh(self.fc3(x))
-        x = self.fc4(x)                                                     # Output layer without activation ("scaling" layer)
+        x = self.fc_out(x)                                                     # Output layer without activation ("scaling" layer)
 
         return x
 

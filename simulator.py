@@ -618,8 +618,9 @@ class MujocoComparisonReplay(MujocoReplay):
                 # Inner helper to populate any scene with our custom markers
                 def add_visuals(target_scn):
                     # 1. Horizons (Run A: Blue, Run B: Orange)
-                    self._draw_path(target_scn, self.logs_a["xyz_traj"][self.frame], rgba=(0.0, 0.5, 1.0, 0.3))
-                    self._draw_path(target_scn, self.logs_b["xyz_traj"][self.frame], rgba=(1.0, 0.5, 0.0, 0.3))
+                    if self.output_xyz:
+                        self._draw_path(target_scn, self.logs_a["xyz_traj"][self.frame], rgba=(0.0, 0.5, 1.0, 0.3))
+                        self._draw_path(target_scn, self.logs_b["xyz_traj"][self.frame], rgba=(1.0, 0.5, 0.0, 0.3))
                     
                     # 2. Ghost Robot (Run B)
                     mujoco.mjv_addGeoms(self.model, self.data2, self.vopt2, self.pert, self.catmask, target_scn)

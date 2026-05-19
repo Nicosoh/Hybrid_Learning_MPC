@@ -31,11 +31,11 @@ mpc:
   #         0.741765, 0.741765, 0.872665, 0.6545 , 1.134465, 1.178095, 0.0] # 42.5, 42.5, 50, 37.5, 65, 67.5, 67.5 deg/s
   # xmax: [2.96706, 2.0944, 2.96706, 2.0944, 2.96706, 2.0944, 3.05433, # 170, 120, 170, 120, 170, 120, 175 deg
   #         0.49451, 0.49451, 0.58177667, 0.43633333, 0.75631, 0.78539667, 0.0] # deg/s
-  xmax: [2.96706, 2.0944, 2.96706, 2.0944, 2.96706, 2.0944, # 170, 120, 170, 120, 170, 120, 175 deg
+  xmax: [1.571, 2.0944, 1.571, 0.0, 1.571, 2.0944, # 170, 120, 170, 120, 170, 120, 175 deg
           0.49451, 0.49451, 0.58177667, 0.43633333, 0.75631, 0.78539667] # deg/s
-  xmin: [-2.96706, 0.0, -2.96706, -2.0944, -2.96706, -2.0944, # 170, 120, 170, 120, 170, 120, 175 deg
+  xmin: [-1.571, 0.0, -1.571, -2.0944, -1.571, -2.0944, # 170, 120, 170, 120, 170, 120, 175 deg
           -0.49451, -0.49451, -0.58177667, -0.43633333, -0.75631, -0.78539667] # deg/s
-  N_horizon: 20
+  N_horizon: 10
   use_RTI: true
   mpc_timestep: 0.05
   x0_q:
@@ -53,12 +53,13 @@ mpc:
   - 0.14476321759187127
   - -0.009518731352717857              # Inital joint velocity if random not true
   x0_q_random: true # If true, x0 above will not be used
-  x0_range: [[[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
-            [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
-            [[0.4,-0.2, 0.35], [0.7, 0.2, 0.5]],
-            [[0.4,-0.2, 0.35], [0.7, 0.2, 0.5]],
-            [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
-            [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]]]
+  # x0_range: [[[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
+  #           [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
+  #           [[0.4,-0.2, 0.35], [0.7, 0.2, 0.5]],
+  #           [[0.4,-0.2, 0.35], [0.7, 0.2, 0.5]],
+  #           [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
+  #           [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]]]
+  x0_range: [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]]
   x0_q_sampling: uniform # Only uniform for now
   yref_q:
   - 0.06516799418354235
@@ -68,12 +69,13 @@ mpc:
   - 0.0990315833521409
   - -0.1785557416168413
   yref_q_random: true
-  yref_range: [[[0.4, -0.2, 0.35], [0.7, 0.2, 0.5]],
-              [[0.4, -0.2, 0.35], [0.7, 0.2, 0.5]],
-              [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
-              [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
-              [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
-              [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]]]
+  # yref_range: [[[0.4, -0.2, 0.35], [0.7, 0.2, 0.5]],
+  #             [[0.4, -0.2, 0.35], [0.7, 0.2, 0.5]],
+  #             [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
+  #             [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
+  #             [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
+  #             [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]]]
+  yref_range: [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]]
   yref_q_sampling: uniform
   zone_probability: [0.2, 0.2, 0.15, 0.15, 0.15, 0.15]
   terminal_cost: false
@@ -86,7 +88,7 @@ mpc:
   # Q_dot_mat: [500, 500, 375, 375, 125, 125, 125]
   R_mat: [0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001]
   early_termination_cost: true # Enable early termination based on cost
-  termination_cost: 0.08 # Tolerance for early termination cost
+  termination_cost: 0.1 # Tolerance for early termination cost
   early_termination_state: false # Enable early termination based on state
   termination_state: 0.01 # Tolerance for early termination state
   solve_ocp: false # Enable if only a single step is required
@@ -125,17 +127,17 @@ collision:
     cap3:
       from: c11
       to: c12
-      radius: 0.15
+      radius: 0.12
 
     cap5:
       from: c21
       to: c22
-      radius: 0.13
+      radius: 0.10
     
     cap7:
       from: c31
       to: c32
-      radius: 0.1
+      radius: 0.08
 
   obstacles_random: false
   obstacles_num: 1
@@ -146,11 +148,11 @@ collision:
 
   obstacles: # Only if obstacles_random: true and will be replaced
     obs1:
-      from: [0.35, 0.0, 0.4]
-      to:   [0.9, 0.0, 0.4]
+      from: [0.35, 0.0, 0.35]
+      to:   [0.9, 0.0, 0.35]
       radius: 0.05
       rpy: [0.0, 0.0, 0.0] # rad
-      center: [0.625, 0.0, 0.4]
+      center: [0.625, 0.0, 0.35]
 
   ground_plane: [0, 0, 1, 0.15]
 
@@ -167,7 +169,7 @@ VI:
   changes:
     mpc:
       controller_name: "ManipulatorMPCController_eeTracker_point"
-      N_horizon: 100
+      N_horizon: 50
       mpc_timestep: 0.1 # seconds
       terminal_cost: true
       json_name: "GT_controller"

@@ -35,7 +35,8 @@ class PendulumModel(nn.Module):
         x = self.fc_out(x)                                                     # Output layer without activation ("scaling" layer)
         x = torch.tensor(0.5, dtype=x.dtype, device=x.device) * torch.sum(x**2, dim=1, keepdim=True)        # Least Squares which mimics acados cost
 
-        return torch.log1p(x)
+        # return torch.log1p(x)
+        return x
     
 @register_model
 class PendulumModelAcados(PendulumModel):
@@ -151,8 +152,8 @@ class TwoDofArmModel(nn.Module):                                            # Wi
         x = self.fc_out(x)                                                     # Output layer without activation ("scaling" layer)
         x = torch.tensor(0.5, dtype=x.dtype, device=x.device) * torch.sum(x**2, dim=1, keepdim=True)        # Least Squares which mimics acados cost
 
-        return torch.log1p(x)
-        # return x
+        # return torch.log1p(x)
+        return x
 
 @register_model
 class TwoDofArmModelAcados(TwoDofArmModel):                                            # Without obstacles

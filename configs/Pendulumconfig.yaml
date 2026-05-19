@@ -31,7 +31,7 @@ mpc:
   Fmax: [1] # Maximum force
   xmax: [6.0, 5.0]
   xmin: [-6.0, -5.0]
-  N_horizon: 20 # Prediction horizon
+  N_horizon: 2 # Prediction horizon
   use_RTI: False # Use Real-Time Iteration
   mpc_timestep: 0.01 # seconds
   x0: [3.142, 0.0]
@@ -44,7 +44,7 @@ mpc:
   Q_mat: [2000, 0.02] # State cost weights
   R_mat: [20] # Input cost weights
   terminal_cost: true
-  early_termination_cost: true # Enable early termination based on cost
+  early_termination_cost: false # Enable early termination based on cost
   termination_cost: 0.1 # Tolerance for early termination cost
   early_termination_state: false
   termination_state: 0.01

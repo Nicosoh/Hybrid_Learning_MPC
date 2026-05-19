@@ -130,11 +130,20 @@ def train_model(config, run_dir, data_path=None, seed=42):
         for xb, xs, yb, ys in train_loader:
             xb = xb.to(device)
             yb = yb.to(device)
+            xs = xs.to(device)
+            ys = ys.to(device)
 
             optimizer.zero_grad()
             preds_main = model(xb)
-            preds_stationary = model(xs.to(device))
-            loss, loss1, loss2 = criterion(preds_main, yb, preds_stationary, ys.to(device))
+            preds_stationary = model(xs)
+            
+            if log_space: # Convert to log space
+                preds_main = torch.log1p(preds_main)
+                yb = torch.log1p(yb)
+                preds_stationary = torch.log1p(preds_stationary)
+                ys = torch.log1p(ys)
+
+            loss, loss1, loss2 = criterion(preds_main, yb, preds_stationary, ys)
             loss.backward()
             optimizer.step()
 
@@ -166,16 +175,26 @@ def train_model(config, run_dir, data_path=None, seed=42):
                 for xb, xs, yb, ys in val_loader:
                     xb = xb.to(device)
                     yb = yb.to(device)
+                    xs = xs.to(device)
+                    ys = ys.to(device)
+
                     preds_main = model(xb)
-                    preds_stationary = model(xs.to(device))
-                    loss, _, _ = criterion(preds_main, yb, preds_stationary, ys.to(device))
+                    preds_stationary = model(xs)
+                    
+                    if log_space: # Convert back to original space for MAE calculation
+                        preds_main = torch.log1p(preds_main)
+                        yb = torch.log1p(yb)
+                        preds_stationary = torch.log1p(preds_stationary)
+                        ys = torch.log1p(ys)
+
+                    loss, _, _ = criterion(preds_main, yb, preds_stationary, ys)
                     val_loss += loss.item() * xb.size(0)
                     
                     if log_space: # Convert back to original space for MAE calculation
                         preds_main = torch.expm1(preds_main)
                         yb = torch.expm1(yb)
                         preds_stationary = torch.expm1(preds_stationary)
-                        ys = torch.expm1(ys.to(device))
+                        ys = torch.expm1(ys)
 
                     mae_main = torch.abs(preds_main - yb).mean()
                     val_mae += mae_main.item() * xb.size(0)

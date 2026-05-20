@@ -531,6 +531,39 @@ def load_collision_config(config):
 
     return config
 
+def load_collision_config_for_replay(config):
+    collision_config = config["collision"]
+
+    # ==========================================================
+    # OBSTACLES
+    # ==========================================================
+    if collision_config["collision_avoidance_obstacle"]:
+        if collision_config["obstacles_random"]:
+            pass # does not matter since this is a replay
+        else:
+            required_keys = ["from", "to", "radius", "rpy", "center"]
+
+            for name, obs in collision_config["obstacles"].items():
+                for key in required_keys:
+                    if key not in obs:
+                        raise ValueError(f"Obstacle '{name}' missing '{key}'")
+
+    # ==========================================================
+    # GROUND
+    # ==========================================================
+    if collision_config["collision_avoidance_ground"]:
+        if collision_config["ground_plane"] is None:
+            raise ValueError("collision_avoidance_ground=True but no ground_plane defined")
+
+
+    # Validate
+    validate_collision_config(collision_config)
+
+    # Replace original collision config
+    config["collision"] = collision_config
+
+    return config
+
 def randomise_obstacles(collision_cfg):
     num_obs = collision_cfg["obstacles_num"]
     sampling = collision_cfg["obstacles_sampling"]

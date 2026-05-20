@@ -1,1 +1,1 @@
-from .loss import StationaryLoss
+from .loss import *

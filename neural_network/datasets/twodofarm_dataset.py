@@ -20,16 +20,11 @@ class TwoDofArmDataset(Dataset):
     def __init__(self, config, run_dir, mode, test_config=None):
         self.run_dir = run_dir
         self.mode = mode
-        self.log_space = config.getboolean("DATA", "log_space")
         self.config = config
         # =============================================================
         #                     TRAIN MODE
         # =============================================================
         if mode == "train":
-            # Load stationary point config 
-            # self.Xs_config = torch.tensor(get_num_config("LOSS", "x_s", config), dtype=torch.float32)
-            # self.ys_config = torch.tensor(get_num_config("LOSS", "y_s", config), dtype=torch.float32)
-
             # Load train data
             data_path = config.get("DATA", "data_path")
             data = load_npz(data_path)
@@ -42,10 +37,6 @@ class TwoDofArmDataset(Dataset):
         #                     TEST MODE
         # =============================================================
         elif mode == "test":
-            # Load stationary point config 
-            # self.Xs_config = torch.tensor(get_num_config("LOSS", "x_s", config), dtype=torch.float32)
-            # self.ys_config = torch.tensor(get_num_config("LOSS", "y_s", config), dtype=torch.float32)
-
             if test_config is None:
                 raise ValueError("test_config must be provided for test mode")
 
@@ -134,11 +125,7 @@ class TwoDofArmDataset_eeTracker(TwoDofArmDataset):
             qpos = run_data["qpos"]
             qvel = run_data["qvel"]
             xyz = run_data["xyzpos"]
-
-            if self.log_space:
-                cost = np.log1p(run_data["total_cost"])
-            else:
-                cost = run_data["total_cost"]
+            cost = run_data["total_cost"]
                 
             yref_pos = np.tile(run_data["yref_xyz"], (qpos.shape[0], 1))
             yref_q_run = np.tile(run_data["yref_q"], (qpos.shape[0], 1))
@@ -155,8 +142,6 @@ class TwoDofArmDataset_eeTracker(TwoDofArmDataset):
             y_list.append(y_run)
 
             # Stationary point arrays
-            # Xs_pos = yref_pos
-            # (ee pos, zero vel, yref pos) 
             # While ee_pos is at yref and with zero velocity cost should be zero.
             Xs_run = np.concatenate([yref_q_run, np.zeros_like(qvel), yref_pos, yref_pos], axis=1)
 
@@ -196,14 +181,10 @@ class TwoDofArmDataset_eeTracker_obs(TwoDofArmDataset):
             qvel = run_data["qvel"]
             xyz = run_data["xyzpos"]
             obs = run_data["obstacles"].item()["obs1"] # Assumes only 1 obstacle
+            cost = run_data["total_cost"]
 
             center = np.tile(np.array(obs["center"]), (qpos.shape[0], 1))
             rpy = np.tile(np.array(obs["rpy"])[1], (qpos.shape[0], 1))
-
-            if self.log_space:
-                cost = np.log1p(run_data["total_cost"])
-            else:
-                cost = run_data["total_cost"]
                 
             yref_pos = np.tile(run_data["yref_xyz"], (qpos.shape[0], 1))
             yref_q_run = np.tile(run_data["yref_q"], (qpos.shape[0], 1))
@@ -220,8 +201,6 @@ class TwoDofArmDataset_eeTracker_obs(TwoDofArmDataset):
             y_list.append(y_run)
 
             # Stationary point arrays
-            # Xs_pos = yref_pos
-            # (ee pos, zero vel, yref pos) 
             # While ee_pos is at yref and with zero velocity cost should be zero.
             Xs_run = np.concatenate([yref_q_run, np.zeros_like(qvel), center, rpy, yref_pos, yref_pos], axis=1)
 
@@ -237,156 +216,157 @@ class TwoDofArmDataset_eeTracker_obs(TwoDofArmDataset):
         self.y = torch.from_numpy(np.vstack(y_list)).float()
         self.ys = torch.from_numpy(np.vstack(ys_list)).float()
 
-class TwoDofArmDataset_eeTracker_TD(Dataset):
-    """
-    N-step TD dataset for value learning (NO discounting).
+# class TwoDofArmDataset_eeTracker_TD(Dataset):
+#     """
+#     N-step TD dataset for value learning (NO discounting).
 
-    Target structure:
+#     Target structure:
 
-        G_t^(n) = sum_{k=0}^{n-1} cost_{t+k}
+#         G_t^(n) = sum_{k=0}^{n-1} cost_{t+k}
 
-    Training target:
+#     Training target:
 
-        y_t = G_t^(n) + V(s_{t+n})
+#         y_t = G_t^(n) + V(s_{t+n})
 
-    Returned:
-        X_t        : state at time t
-        X_tpn      : state at time t+n
-        cost_n     : cumulative n-step cost
-        Xs         : stationary goal states
-        ys         : terminal target (zeros)
-    """
+#     Returned:
+#         X_t        : state at time t
+#         X_tpn      : state at time t+n
+#         cost_n     : cumulative n-step cost
+#         Xs         : stationary goal states
+#         ys         : terminal target (zeros)
+#     """
 
-    def __init__(self, config, run_dir, mode, test_config=None):
-        self.run_dir = run_dir
-        self.mode = mode
-        self.config = config
-        self.log_space = self.config.getboolean("DATA", "log_space")
-        self.n_step = self.config.getint("TRAINING", "n_step")
+#     def __init__(self, config, run_dir, mode, test_config=None):
+#         self.run_dir = run_dir
+#         self.mode = mode
+#         self.config = config
+#         self.log_space = self.config.getboolean("DATA", "log_space")
+#         self.n_step = self.config.getint("TRAINING", "n_step")
 
-        # =============================================================
-        #                     TRAIN MODE
-        # =============================================================
-        if mode == "train":
-            # Load train data
-            data_path = self.config.get("DATA", "data_path")
-            data = load_npz(data_path)
-            self.preprocess_data(data)  # sets self.X and self.y
+#         # =============================================================
+#         #                     TRAIN MODE
+#         # =============================================================
+#         if mode == "train":
+#             # Load train data
+#             data_path = self.config.get("DATA", "data_path")
+#             data = load_npz(data_path)
+#             self.preprocess_data(data)  # sets self.X and self.y
 
-        # =============================================================
-        #                     TEST MODE
-        # =============================================================
-        elif mode == "test":
-            raise NotImplementedError("Test mode not implemented for TD dataset")
-    def preprocess_data(self, data):
+#         # =============================================================
+#         #                     TEST MODE
+#         # =============================================================
+#         elif mode == "test":
+#             raise NotImplementedError("Test mode not implemented for TD dataset")
+        
+#     def preprocess_data(self, data):
 
-        X_t_list = []
-        X_tpn_list = []
-        cost_n_list = []
+#         X_t_list = []
+#         X_tpn_list = []
+#         cost_n_list = []
 
-        Xs_list = []
-        ys_list = []
+#         Xs_list = []
+#         ys_list = []
 
-        n = self.n_step
+#         n = self.n_step
 
-        for run_key in data.keys():
+#         for run_key in data.keys():
 
-            run_data = data[run_key]
+#             run_data = data[run_key]
 
-            qpos = run_data["qpos"]
-            qvel = run_data["qvel"]
-            xyz = run_data["xyzpos"]
+#             qpos = run_data["qpos"]
+#             qvel = run_data["qvel"]
+#             xyz = run_data["xyzpos"]
 
-            # ====================================================
-            # Stage cost
-            # ====================================================
-            raw_cost = compute_l2_cost(
-                config=self.model_config,
-                xyz=xyz,
-                qvel=qvel,
-                yref_xyz=run_data["yref_xyz"],
-                u=run_data["u_applied"]
-            )
+#             # ====================================================
+#             # Stage cost
+#             # ====================================================
+#             raw_cost = compute_l2_cost(
+#                 config=self.model_config,
+#                 xyz=xyz,
+#                 qvel=qvel,
+#                 yref_xyz=run_data["yref_xyz"],
+#                 u=run_data["u_applied"]
+#             )
 
-            # ====================================================
-            # Goal references
-            # ====================================================
-            yref_xyz = np.tile(run_data["yref_xyz"], (qpos.shape[0], 1))
+#             # ====================================================
+#             # Goal references
+#             # ====================================================
+#             yref_xyz = np.tile(run_data["yref_xyz"], (qpos.shape[0], 1))
 
-            yref_q = np.tile(run_data["yref_q"], (qpos.shape[0], 1))
+#             yref_q = np.tile(run_data["yref_q"], (qpos.shape[0], 1))
 
-            # ====================================================
-            # STATE:
-            # [qpos, qvel, goal_xyz, ee_xyz]
-            # ====================================================
-            X = np.concatenate([qpos, qvel, yref_xyz, xyz], axis=1)
+#             # ====================================================
+#             # STATE:
+#             # [qpos, qvel, goal_xyz, ee_xyz]
+#             # ====================================================
+#             X = np.concatenate([qpos, qvel, yref_xyz, xyz], axis=1)
 
-            # ====================================================
-            # Stationary goal manifold
-            # ====================================================
-            Xs_run = np.concatenate([yref_q, np.zeros_like(qvel), yref_xyz, yref_xyz], axis=1)
+#             # ====================================================
+#             # Stationary goal manifold
+#             # ====================================================
+#             Xs_run = np.concatenate([yref_q, np.zeros_like(qvel), yref_xyz, yref_xyz], axis=1)
 
-            T = X.shape[0]
+#             T = X.shape[0]
 
-            # ====================================================
-            # Build N-step TD samples
-            # ====================================================
-            for t in range(T - n):
+#             # ====================================================
+#             # Build N-step TD samples
+#             # ====================================================
+#             for t in range(T - n):
 
-                # --------------------------------------------
-                # Current state
-                # --------------------------------------------
-                X_t = X[t]
+#                 # --------------------------------------------
+#                 # Current state
+#                 # --------------------------------------------
+#                 X_t = X[t]
 
-                # --------------------------------------------
-                # Bootstrap state
-                # --------------------------------------------
-                X_tpn = X[t + n]
+#                 # --------------------------------------------
+#                 # Bootstrap state
+#                 # --------------------------------------------
+#                 X_tpn = X[t + n]
 
-                # --------------------------------------------
-                # N-step cumulative cost
-                # NO discounting
-                # --------------------------------------------
-                cumulative_cost = np.sum(raw_cost[t:t+n])
+#                 # --------------------------------------------
+#                 # N-step cumulative cost
+#                 # NO discounting
+#                 # --------------------------------------------
+#                 cumulative_cost = np.sum(raw_cost[t:t+n])
 
-                # Log transform AFTER accumulation
-                if self.log_space:
-                    cumulative_cost = np.log1p(cumulative_cost)
+#                 # Log transform AFTER accumulation
+#                 if self.log_space:
+#                     cumulative_cost = np.log1p(cumulative_cost)
 
-                # --------------------------------------------
-                # Goal stationary state
-                # --------------------------------------------
-                Xs = Xs_run[t]
+#                 # --------------------------------------------
+#                 # Goal stationary state
+#                 # --------------------------------------------
+#                 Xs = Xs_run[t]
 
-                # --------------------------------------------
-                # Terminal supervision target
-                # V(goal) = 0
-                # --------------------------------------------
-                y = np.array([0.0], dtype=np.float32)
+#                 # --------------------------------------------
+#                 # Terminal supervision target
+#                 # V(goal) = 0
+#                 # --------------------------------------------
+#                 y = np.array([0.0], dtype=np.float32)
 
-                # --------------------------------------------
-                # Append
-                # --------------------------------------------
-                X_t_list.append(X_t)
-                X_tpn_list.append(X_tpn)
+#                 # --------------------------------------------
+#                 # Append
+#                 # --------------------------------------------
+#                 X_t_list.append(X_t)
+#                 X_tpn_list.append(X_tpn)
 
-                cost_n_list.append(np.array([cumulative_cost], dtype=np.float32))
+#                 cost_n_list.append(np.array([cumulative_cost], dtype=np.float32))
 
-                Xs_list.append(Xs)
+#                 Xs_list.append(Xs)
 
-                ys_list.append(y)
+#                 ys_list.append(y)
 
-        # ====================================================
-        # Stack everything
-        # ====================================================
-        self.X_t = torch.from_numpy(np.vstack(X_t_list)).float()
-        self.X_tpn = torch.from_numpy(np.vstack(X_tpn_list)).float()
-        self.cost_n = torch.from_numpy(np.vstack(cost_n_list)).float()
-        self.Xs = torch.from_numpy(np.vstack(Xs_list)).float()
-        self.ys = torch.from_numpy(np.vstack(ys_list)).float()
+#         # ====================================================
+#         # Stack everything
+#         # ====================================================
+#         self.X_t = torch.from_numpy(np.vstack(X_t_list)).float()
+#         self.X_tpn = torch.from_numpy(np.vstack(X_tpn_list)).float()
+#         self.cost_n = torch.from_numpy(np.vstack(cost_n_list)).float()
+#         self.Xs = torch.from_numpy(np.vstack(Xs_list)).float()
+#         self.ys = torch.from_numpy(np.vstack(ys_list)).float()
 
-    def __len__(self):
-        return self.X_t.shape[0]
+#     def __len__(self):
+#         return self.X_t.shape[0]
 
-    def __getitem__(self, idx):
-        return (self.X_t[idx], self.X_tpn[idx], self.Xs[idx], self.cost_n[idx], self.ys[idx])
+#     def __getitem__(self, idx):
+#         return (self.X_t[idx], self.X_tpn[idx], self.Xs[idx], self.cost_n[idx], self.ys[idx])

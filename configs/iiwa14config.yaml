@@ -21,7 +21,7 @@ pin:
 mpc:
   json_name: "main_controller"
   controller_name: "ManipulatorMPCController_eeTracker_point"
-  # controller_name: "NNManipulatorMPCController_eeTracker_point"
+  # controller_name: "NNManipulatorMPCController_eeTracker_point_rndobs_iiwa14"
   # Fmax: [320, 320, 176, 176, 110, 40, 40]
   # Fmax: [320, 320, 176, 176, 110, 40, 0]
   Fmax: [320, 320, 176, 176, 110, 40]
@@ -53,13 +53,13 @@ mpc:
   - 0.14476321759187127
   - -0.009518731352717857              # Inital joint velocity if random not true
   x0_q_random: true # If true, x0 above will not be used
-  # x0_range: [[[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
-  #           [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
-  #           [[0.4,-0.2, 0.35], [0.7, 0.2, 0.5]],
-  #           [[0.4,-0.2, 0.35], [0.7, 0.2, 0.5]],
-  #           [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
-  #           [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]]]
-  x0_range: [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]]
+  x0_range: [[[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
+            [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
+            [[0.4,-0.2, 0.35], [0.7, 0.2, 0.5]],
+            [[0.4,-0.2, 0.35], [0.7, 0.2, 0.5]],
+            [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
+            [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]]]
+  # x0_range: [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]]
   x0_q_sampling: uniform # Only uniform for now
   yref_q:
   - 0.06516799418354235
@@ -69,13 +69,13 @@ mpc:
   - 0.0990315833521409
   - -0.1785557416168413
   yref_q_random: true
-  # yref_range: [[[0.4, -0.2, 0.35], [0.7, 0.2, 0.5]],
-  #             [[0.4, -0.2, 0.35], [0.7, 0.2, 0.5]],
-  #             [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
-  #             [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
-  #             [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
-  #             [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]]]
-  yref_range: [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]]
+  yref_range: [[[0.4, -0.2, 0.35], [0.7, 0.2, 0.5]],
+              [[0.4, -0.2, 0.35], [0.7, 0.2, 0.5]],
+              [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
+              [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
+              [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
+              [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]]]
+  # yref_range: [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]]
   yref_q_sampling: uniform
   zone_probability: [0.2, 0.2, 0.15, 0.15, 0.15, 0.15]
   terminal_cost: false
@@ -139,11 +139,12 @@ collision:
       to: c32
       radius: 0.08
 
-  obstacles_random: false
+  obstacles_random: true
   obstacles_num: 1
-  obstacles_range: [[0.3, 0.0, 0.0], [0.8, 0.0, 0.60],       # [[from_min_x,y,z, from_max_x,y,z], 
-                    [0.3, 0.0, 0.0], [0.8, 0.0, 0.60],       # [to_min_x,y,z, to_max_x,y,z], 
-                    [0.05, 0.05]]                             # [radius_min, radius_max]]
+  obstacle_length: 0.55
+  obstacle_center_range: [[0.575, 0.0, 0.30], [0.675, 0.0, 0.40]]
+  obstacle_radius: 0.05
+  obstacle_RPY_range: [[-0.1, -0.1, -0.1], [0.1, 0.1, 0.1]] # rad
   obstacles_sampling: uniform
 
   obstacles: # Only if obstacles_random: true and will be replaced
@@ -175,7 +176,7 @@ VI:
       json_name: "GT_controller"
 
 NN:
-  model_name: "iiwa14ModelAcados"
+  model_name: "iiwa14ModelAcados_obs"
   checkpoint_path: ""
 
 plots:

@@ -54,7 +54,7 @@ def main(run_folder):
 
     # Load collision_config
     if model_config["collision"]["collision_avoidance_obstacle"] or model_config["collision"]["collision_avoidance_ground"]:                                                      # If enabled in config
-        model_config = load_collision_config(model_config)                                        # Load obstacles
+        model_config = load_collision_config_for_replay(model_config)                                        # Load obstacles
 
     # ----------------------------
     # Run replay

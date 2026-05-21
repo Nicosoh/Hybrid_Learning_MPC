@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import os
 import torch
+import numpy as np
 
 def plot_loss(train_losses, val_losses, stationary_ratios, val_maes, val_maes_stationary, percentile_history, run_dir, show_plot=True):
     save_path = os.path.join(run_dir, "loss_plot.jpg")
@@ -139,6 +140,67 @@ def plot_loss(train_losses, val_losses, stationary_ratios, val_maes, val_maes_st
         plt.show()
 
     plt.close()
+
+def plot_TD_loss(train_losses, stationary_ratios, run_dir, show_plot=True):
+
+    save_path = os.path.join(run_dir, "loss_plot.jpg")
+
+    epochs = np.arange(1, len(train_losses) + 1)
+
+    fig, (ax1, ax2) = plt.subplots(
+        2,
+        1,
+        figsize=(10, 8),
+        sharex=True
+    )
+
+    # ========================================
+    # TD Loss
+    # ========================================
+
+    ax1.plot(
+        epochs,
+        train_losses,
+        color='tab:blue',
+        linewidth=1.5,
+        label='TD Loss'
+    )
+
+    ax1.set_ylabel("TD Loss")
+    ax1.set_yscale('log')
+    ax1.grid(True, which='both', linestyle=':')
+    ax1.legend()
+
+    # ========================================
+    # Stationary Ratio
+    # ========================================
+
+    ax2.plot(
+        epochs,
+        stationary_ratios,
+        color='purple',
+        linewidth=1.5,
+        label='Stationary Ratio'
+    )
+
+    ax2.set_ylabel("Stationary Ratio")
+    ax2.set_xlabel("Epoch")
+    ax2.set_yscale('log')
+    ax2.grid(True, which='both', linestyle=':')
+    ax2.legend()
+
+    fig.tight_layout()
+
+    plt.savefig(
+        save_path,
+        dpi=300,
+        bbox_inches='tight'
+    )
+
+    if show_plot:
+        plt.show()
+
+    plt.close(fig)
 
 # def run_scaling(X=None, y=None, scaling_type=None, scaling_params=None,
 #                 scaling_range_X=None, scaling_range_y=None, inverse=False):

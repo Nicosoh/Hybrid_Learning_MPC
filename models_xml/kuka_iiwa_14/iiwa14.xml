@@ -8,11 +8,15 @@
       <material specular="0.5" shininess="0.25"/>
       <joint axis="0 0 1"/>
       <default class="joint1">
-        <joint range="-2.96706 2.96706"/>
+        <!-- <joint range="-2.96706 2.96706"/> -->
+        <joint range="-1.571 1.571"/>
         <default class="joint2">
           <joint range="-2.0944 2.0944"/>
           <default class="joint4">
             <joint range="0.0 2.0944"/>
+            <default class="joint5">
+              <joint range="-2.0944 0.0 "/>
+            </default>
           </default>
         </default>
       </default>
@@ -74,12 +78,12 @@
             <geom class="visual" mesh="link_3"/>
             <geom class="visual" material="light_gray" mesh="band"/>
             <geom class="visual" material="black" mesh="kuka"/>
-            <geom class="collision" name="collision_capsule3" type="capsule" fromto="0 0 -0.2 0 0 0.2" size="0.15" rgba="1.0 0.0 0.0 0.2"/>
+            <geom class="collision" name="collision_capsule3" type="capsule" fromto="0 0 -0.2 0 0 0.2" size="0.12" rgba="1.0 0.0 0.0 0.2"/>
             <site pos="0 0 -0.2" name="c11" group="1"/>
             <site pos="0 0 0.2" name="c12" group="1"/>
             <body name="link4" pos="0 0 0.2155" quat="1 1 0 0">
               <inertial mass="3.5" pos="0 0.067 0.034" diaginertia="0.017 0.0164 0.006" quat="1 1 0 0"/>
-              <joint name="joint4" class="joint2"/>
+              <joint name="joint4" class="joint5"/>
               <geom class="visual" material="orange" mesh="link_4_orange"/>
               <geom class="visual" mesh="link_4_grey"/>
               <!-- <geom class="collision" name="collision_capsule4" type="capsule" fromto="0 0 0 0 0 0.028" size="0.12" rgba="0.0 0.0 1.0 0.2"/> -->
@@ -89,7 +93,7 @@
                 <geom class="visual" mesh="link_5"/>
                 <geom class="visual" material="light_gray" mesh="band"/>
                 <geom class="visual" material="black" mesh="kuka"/>
-                <geom class="collision" name="collision_capsule5" type="capsule" fromto="0 0 -0.16 0 0 0.2" size="0.13" rgba="0.0 1.0 0.0 0.2"/>
+                <geom class="collision" name="collision_capsule5" type="capsule" fromto="0 0 -0.16 0 0 0.2" size="0.10" rgba="0.0 1.0 0.0 0.2"/>
                 <site pos="0 0 -0.16" name="c21"/>
                 <site pos="0 0 0.2" name="c22" group="1"/>
                 <body name="link6" pos="0 0 0.2155" quat="1 1 0 0">
@@ -101,9 +105,9 @@
                     <inertial mass="1.2" pos="0 0 0.02" diaginertia="0.001 0.001 0.001"/>
                     <!-- <joint name="joint7" class="joint3"/> -->
                     <geom class="visual" mesh="link_7"/>
-                    <geom class="collision" name="collision_capsule7" type="capsule" fromto="0 0 0.0 0 0 0.005" size="0.1" rgba="0.0 0.0 1.0 0.2"/>
+                    <geom class="collision" name="collision_capsule7" type="capsule" fromto="0 0 0.0 0 0 0.055" size="0.08" rgba="0.0 0.0 1.0 0.2"/>
                     <site pos="0 0 0" name="c31" group="1"/>
-                    <site pos="0 0 0.005" name="c32" group="1"/>
+                    <site pos="0 0 0.055" name="c32" group="1"/>
                     <!-- <geom class="collision" size="0.06" pos="0 0 0.001"/> -->
                     <site pos="0 0 0.1" name="attachment_site" group="2"/>
                     <camera pos="2 0 2" xyaxes="0 1 0  -0.7071 0 0.7071" mode="trackcom"/>

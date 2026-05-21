@@ -21,7 +21,7 @@ pin:
 mpc:
   json_name: "main_controller"
   controller_name: "ManipulatorMPCController_eeTracker_point"
-  # controller_name: "NNManipulatorMPCController_eeTracker_point"
+  # controller_name: "NNManipulatorMPCController_eeTracker_point_rndobs_iiwa14"
   # Fmax: [320, 320, 176, 176, 110, 40, 40]
   # Fmax: [320, 320, 176, 176, 110, 40, 0]
   Fmax: [320, 320, 176, 176, 110, 40]
@@ -31,11 +31,11 @@ mpc:
   #         0.741765, 0.741765, 0.872665, 0.6545 , 1.134465, 1.178095, 0.0] # 42.5, 42.5, 50, 37.5, 65, 67.5, 67.5 deg/s
   # xmax: [2.96706, 2.0944, 2.96706, 2.0944, 2.96706, 2.0944, 3.05433, # 170, 120, 170, 120, 170, 120, 175 deg
   #         0.49451, 0.49451, 0.58177667, 0.43633333, 0.75631, 0.78539667, 0.0] # deg/s
-  xmax: [2.96706, 2.0944, 2.96706, 2.0944, 2.96706, 2.0944, # 170, 120, 170, 120, 170, 120, 175 deg
+  xmax: [1.571, 2.0944, 1.571, 0.0, 1.571, 2.0944, # 170, 120, 170, 120, 170, 120, 175 deg
           0.49451, 0.49451, 0.58177667, 0.43633333, 0.75631, 0.78539667] # deg/s
-  xmin: [-2.96706, 0.0, -2.96706, -2.0944, -2.96706, -2.0944, # 170, 120, 170, 120, 170, 120, 175 deg
+  xmin: [-1.571, 0.0, -1.571, -2.0944, -1.571, -2.0944, # 170, 120, 170, 120, 170, 120, 175 deg
           -0.49451, -0.49451, -0.58177667, -0.43633333, -0.75631, -0.78539667] # deg/s
-  N_horizon: 20
+  N_horizon: 10
   use_RTI: true
   mpc_timestep: 0.05
   x0_q:
@@ -59,6 +59,7 @@ mpc:
             [[0.4,-0.2, 0.35], [0.7, 0.2, 0.5]],
             [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]],
             [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]]]
+  # x0_range: [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]]
   x0_q_sampling: uniform # Only uniform for now
   yref_q:
   - 0.06516799418354235
@@ -74,6 +75,7 @@ mpc:
               [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
               [[0.4, -0.2, 0.15], [0.7, 0.0, 0.35]],
               [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]]]
+  # yref_range: [[0.4, 0.0, 0.15], [0.7, 0.2, 0.35]]
   yref_q_sampling: uniform
   zone_probability: [0.2, 0.2, 0.15, 0.15, 0.15, 0.15]
   terminal_cost: false
@@ -86,7 +88,7 @@ mpc:
   # Q_dot_mat: [500, 500, 375, 375, 125, 125, 125]
   R_mat: [0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001]
   early_termination_cost: true # Enable early termination based on cost
-  termination_cost: 0.08 # Tolerance for early termination cost
+  termination_cost: 0.1 # Tolerance for early termination cost
   early_termination_state: false # Enable early termination based on state
   termination_state: 0.01 # Tolerance for early termination state
   solve_ocp: false # Enable if only a single step is required
@@ -125,32 +127,33 @@ collision:
     cap3:
       from: c11
       to: c12
-      radius: 0.15
+      radius: 0.12
 
     cap5:
       from: c21
       to: c22
-      radius: 0.13
+      radius: 0.10
     
     cap7:
       from: c31
       to: c32
-      radius: 0.1
+      radius: 0.08
 
-  obstacles_random: false
+  obstacles_random: true
   obstacles_num: 1
-  obstacles_range: [[0.3, 0.0, 0.0], [0.8, 0.0, 0.60],       # [[from_min_x,y,z, from_max_x,y,z], 
-                    [0.3, 0.0, 0.0], [0.8, 0.0, 0.60],       # [to_min_x,y,z, to_max_x,y,z], 
-                    [0.05, 0.05]]                             # [radius_min, radius_max]]
+  obstacle_length: 0.55
+  obstacle_center_range: [[0.575, 0.0, 0.30], [0.675, 0.0, 0.40]]
+  obstacle_radius: 0.05
+  obstacle_RPY_range: [[-0.1, -0.1, -0.1], [0.1, 0.1, 0.1]] # rad
   obstacles_sampling: uniform
 
   obstacles: # Only if obstacles_random: true and will be replaced
     obs1:
-      from: [0.35, 0.0, 0.4]
-      to:   [0.9, 0.0, 0.4]
+      from: [0.35, 0.0, 0.35]
+      to:   [0.9, 0.0, 0.35]
       radius: 0.05
       rpy: [0.0, 0.0, 0.0] # rad
-      center: [0.625, 0.0, 0.4]
+      center: [0.625, 0.0, 0.35]
 
   ground_plane: [0, 0, 1, 0.15]
 
@@ -167,13 +170,13 @@ VI:
   changes:
     mpc:
       controller_name: "ManipulatorMPCController_eeTracker_point"
-      N_horizon: 100
+      N_horizon: 50
       mpc_timestep: 0.1 # seconds
       terminal_cost: true
       json_name: "GT_controller"
 
 NN:
-  model_name: "iiwa14ModelAcados"
+  model_name: "iiwa14ModelAcados_obs"
   checkpoint_path: ""
 
 plots:

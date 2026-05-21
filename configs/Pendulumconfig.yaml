@@ -30,12 +30,13 @@ mpc:
   controller_name: "NNMPCController"
   Fmax: [1] # Maximum force
   xmax: [6.0, 5.0]
+  xmin: [-6.0, -5.0]
   N_horizon: 2 # Prediction horizon
   use_RTI: False # Use Real-Time Iteration
   mpc_timestep: 0.01 # seconds
   x0: [3.142, 0.0]
   # x0: [-1.702437617635593, 0.15633105949216464]
-  x0_random: false # If true, x0 above will not be used
+  x0_random: true # If true, x0 above will not be used
   x0_range: [[-3.142, -5.0], [3.142, 5.0]] # Range for random x0
   x0_sampling: "uniform" # Only uniform for now
   yref_random: false
@@ -63,9 +64,11 @@ IK:
 
 data:
   save_data: true
+  save_yaml: true
 
 collision:
-  collision_avoidance: false
+  collision_avoidance_obstacle: false
+  collision_avoidance_ground: false
 
 # Ground truth controller
 VI:
@@ -75,13 +78,13 @@ VI:
     mpc:
       controller_name: "BaseMPCController"
       N_horizon: 25
-      mpc_timestep: 0.1 # seconds
+      mpc_timestep: 0.05 # seconds
       terminal_cost: true
       json_name: "GT_controller"
 
 NN:
   model_name: "PendulumModelAcados"
-  checkpoint_path: "value_iteration/output/2026-02-21_22-11-41_Pendulum_VI_converged/loop_400/training/model_epoch_14.pt"
+  checkpoint_path: ""
 
 plots:
   Pendulum Angle: ["qpos", 0, "rad"]

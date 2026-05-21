@@ -1,13 +1,39 @@
-# model_name: iiwa14
-model_name: TwoDofArm
-data_config_path: data_collection/data_config.yaml
-# train_config_path: neural_network/configs/iiwa14ModelTrainConfig.ini
-train_config_path: neural_network/configs/TwoDofArmModelTrainConfig_obs.ini
-VI_loops: 1000
+# # Pendulum
+# model_name: Pendulum
+# data_config_path: data_collection/data_config.yaml
+# train_config_path: neural_network/configs/PendulumModelTrainConfig.ini
+# controller_name: BaseMPCController
+# NN_controller_name: NNMPCController
+
+# # TwoDofArm
+# model_name: TwoDofArm
+# data_config_path: data_collection/data_config.yaml
+# train_config_path: neural_network/configs/TwoDofArmModelTrainConfig.ini
 # controller_name: ManipulatorMPCController_eeTracker_point
 # NN_controller_name: NNManipulatorMPCController_eeTracker_point
+
+# # TwoDofrm with random obs
+# model_name: TwoDofArm
+# data_config_path: data_collection/data_config.yaml
+# train_config_path: neural_network/configs/TwoDofArmModelTrainConfig_obs.ini
+# controller_name: ManipulatorMPCController_eeTracker_point
+# NN_controller_name: NNManipulatorMPCController_eeTracker_point_rndobs_TwoDofArm
+
+# # iiwa14
+# model_name: iiwa14
+# data_config_path: data_collection/data_config.yaml
+# train_config_path: neural_network/configs/iiwa14ModelTrainConfig.ini
+# controller_name: ManipulatorMPCController_eeTracker_point
+# NN_controller_name: NNManipulatorMPCController_eeTracker_point
+
+# iiwa14 with random obs
+model_name: iiwa14
+data_config_path: data_collection/data_config.yaml
+train_config_path: neural_network/configs/iiwa14ModelTrainConfig_obs.ini
 controller_name: ManipulatorMPCController_eeTracker_point
-NN_controller_name: NNManipulatorMPCController_eeTracker_point_obs
+NN_controller_name: NNManipulatorMPCController_eeTracker_point_rndobs_iiwa14
+
+VI_loops: 1000
 
 resume_training: false
 loop_to_resume_from: 

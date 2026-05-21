@@ -82,7 +82,7 @@ def plot_traj_xyz(all_logs, config, samples, frame_name, save_dir=None):
     ax.set_zlabel("Z")
     ax.set_title(f"3D Trajectories of frame '{frame_name}'")
 
-    ax.view_init(elev=30, azim=45)
+    ax.view_init(elev=0, azim=0)
     ax.grid(True)
     set_axes_equal(ax)
 
@@ -147,6 +147,9 @@ def plot_xyz_targets(all_logs, samples, save_dir=None):
     ax.set_zlabel("Z")
     set_axes_equal(ax)
     ax.legend()
+
+    # Look along X axis
+    ax.view_init(elev=0, azim=0)
 
     plt.tight_layout()
 

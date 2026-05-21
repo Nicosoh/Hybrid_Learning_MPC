@@ -1,3 +1,4 @@
+from colorlog import warning
 import scipy.linalg
 
 import numpy as np
@@ -186,7 +187,8 @@ class BaseMPCController:
         raise NotImplementedError("create_constraints_func method not implemented in BaseMPCController.")
     
     def update_parameters(self):
-        raise NotImplementedError("update_parameters method not implemented in BaseMPCController.")
+        warning("No parameters to update for this controller.")
+        pass
     
     def set_yref(self, yref_now):
         for stage in range(self.N):
@@ -375,18 +377,18 @@ class NNMPCController(BaseMPCController):
         for stage in range(self.N):
             self.ocp_solver.cost_set(stage, "yref", yref_now, api='new')
         if self.terminal_cost:
-            self.ocp_solver.cost_set(self.N, "yref", np.zeros((1,)), api='new')  # Terminal reference (only x)
+            self.ocp_solver.cost_set(self.N, "yref", np.zeros((64,)), api='new')  # Terminal reference (only x)
 
     def define_terminal_cost(self, ocp, model, config):
         self.ny_e = model.x.rows()
         ocp.cost.cost_type_e = 'NONLINEAR_LS'               # Terminal cost
-        ocp.cost.W_e = np.ones((1, 1))                      # Weights set to 1, meaning no scaling for the NN output
-        ocp.cost.yref_e = np.zeros((1, ))                   # Set terminal reference to zero for NN output
+        ocp.cost.W_e = np.eye(64)                      # Weights set to 1, meaning no scaling for the NN output
+        ocp.cost.yref_e = np.zeros((64, ))                   # Set terminal reference to zero for NN output
         # Export trained NN model
         self.l4c_model = export_torch_model(config, self.worker_id)
         # Evaluate NN symbolically
         y_sym = self.l4c_model(ca.transpose(model.x))
-        ocp.model.cost_y_expr_e = y_sym
+        ocp.model.cost_y_expr_e = ca.transpose(y_sym)
         # Link shared library
         ocp.solver_options.model_external_shared_lib_dir = self.l4c_model.shared_lib_dir
         ocp.solver_options.model_external_shared_lib_name = self.l4c_model.name
@@ -399,7 +401,8 @@ class NNMPCController(BaseMPCController):
         yN = np.asarray(self.l4c_model(xN)).squeeze()
 
         # NONLINEAR_LS terminal cost
-        terminal_cost = 0.5 * yN**2
+        terminal_cost = 0.5 * np.sum(yN**2)
+        
         return terminal_cost
 
 @register_controller
@@ -799,7 +802,7 @@ class NNManipulatorMPCController_eeTracker_point(NNManipulatorMPCController_eeTr
             self.ocp_solver.set(self.N, "p", self.p)                                             # Modify Goal/obstacle position
 
 @register_controller
-class NNManipulatorMPCController_eeTracker_point_obs(NNManipulatorMPCController_eeTracker_point):
+class NNManipulatorMPCController_eeTracker_point_rndobs_TwoDofArm(NNManipulatorMPCController_eeTracker_point):
     def __init__(self, config, worker_id=0):
         super().__init__(config, worker_id=worker_id)
 
@@ -818,6 +821,40 @@ class NNManipulatorMPCController_eeTracker_point_obs(NNManipulatorMPCController_
         # Create parameters for goal, obstacle
         center = np.array(self.obs1_config["center"])
         rpy = np.array([self.obs1_config["rpy"][1]]) # Modify later for iiwa14
+        yref = np.array(self.config["mpc"]["yref"])
+
+        self.NN = np.concatenate([center, rpy, yref])               # Actual values 
+        self.p_NN = SX.sym('p', self.NN.shape[0])                    # Symbolic vars
+
+        # Export trained NN model
+        self.l4c_model = export_torch_model(config, self.worker_id)
+        # Evaluate NN symbolically
+        y_sym = self.l4c_model(ca.transpose(vertcat(model.x, self.p_NN, self.ee_expr)))
+        ocp.model.cost_y_expr_e = ca.transpose(y_sym)
+        # Link shared library
+        ocp.solver_options.model_external_shared_lib_dir = self.l4c_model.shared_lib_dir
+        ocp.solver_options.model_external_shared_lib_name = self.l4c_model.name
+
+@register_controller
+class NNManipulatorMPCController_eeTracker_point_rndobs_iiwa14(NNManipulatorMPCController_eeTracker_point_rndobs_TwoDofArm):
+    def __init__(self, config, worker_id=0):
+        super().__init__(config, worker_id=worker_id)
+
+        if not config["collision"]["collision_avoidance_obstacle"]:
+            raise ValueError("NNManipulatorMPCController_eeTracker_point_obs requires collision_avoidance_obstacle to be True.")
+
+    def define_terminal_cost(self, ocp, model, config):
+        ocp.cost.cost_type_e = 'NONLINEAR_LS'               # Terminal cost
+        ocp.cost.W_e = np.eye(64)                      # Weights set to 1, meaning no scaling for the NN output
+        ocp.cost.yref_e = np.zeros((64, ))                   # Set terminal reference to zero for NN output
+
+        # Extract joint velocities (Not actually used but required to build references)
+        nx = model.x.rows()
+        self.ny_e = self.ee_expr.shape[0]+ nx//2
+
+        # Create parameters for goal, obstacle
+        center = np.array(self.obs1_config["center"])
+        rpy = np.array(self.obs1_config["rpy"]) # Modify later for iiwa14
         yref = np.array(self.config["mpc"]["yref"])
 
         self.NN = np.concatenate([center, rpy, yref])               # Actual values 

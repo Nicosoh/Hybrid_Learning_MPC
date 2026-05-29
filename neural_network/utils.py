@@ -141,7 +141,7 @@ def plot_loss(train_losses, val_losses, stationary_ratios, val_maes, val_maes_st
 
     plt.close()
 
-def plot_TD_loss(train_losses, stationary_ratios, run_dir, show_plot=True):
+def plot_TD_loss(train_losses, stationary_losses, run_dir, show_plot=True):
 
     save_path = os.path.join(run_dir, "loss_plot.jpg")
 
@@ -177,13 +177,13 @@ def plot_TD_loss(train_losses, stationary_ratios, run_dir, show_plot=True):
 
     ax2.plot(
         epochs,
-        stationary_ratios,
+        stationary_losses,
         color='purple',
         linewidth=1.5,
-        label='Stationary Ratio'
+        label='Stationary Loss'
     )
 
-    ax2.set_ylabel("Stationary Ratio")
+    ax2.set_ylabel("Stationary Loss")
     ax2.set_xlabel("Epoch")
     ax2.set_yscale('log')
     ax2.grid(True, which='both', linestyle=':')

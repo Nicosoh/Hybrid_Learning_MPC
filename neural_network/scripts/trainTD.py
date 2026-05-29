@@ -1,7 +1,6 @@
 import os
 import yaml
 
-from TD.replay_buffer import ReplayBuffer
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -14,8 +13,9 @@ import torch.nn as nn
 
 from tqdm import tqdm
 from utils import get_num_config
+from neural_network.losses import *
+from TD.replay_buffer import ReplayBuffer
 from neural_network.utils import plot_TD_loss
-from neural_network.losses import StationaryLoss
 
 from neural_network.models import MODEL_REGISTRY
 
@@ -47,15 +47,34 @@ def train_model_TD(train_config, run_dir, capacity, data_path=None, seed=42):
 
     # Data
     # dataset_class = train_config.get("DATA", "dataset_class")
-    # log_space = train_config.getboolean("DATA", "log_space")
+    log_space = train_config.getboolean("DATA", "log_space")
 
     # Model
     model_name = train_config.get("MODEL", "model_name")
     target_model_checkpoint_path = train_config.get("MODEL", "target_model_checkpoint_path")
     online_model_checkpoint_path = train_config.get("MODEL", "online_model_checkpoint_path")
+    offline_model_checkpoint_path = train_config.get("MODEL", "offline_model_checkpoint_path")
 
     # Loss
     alpha = torch.tensor(train_config.getfloat("LOSS", "alpha"), dtype=torch.float32)
+    lam = torch.tensor(train_config.getfloat("LOSS", "lam"), dtype=torch.float32)
+    current_mse = torch.tensor(train_config.getfloat("LOSS", "current_mse"), dtype=torch.float32)
+    p_exp_up = torch.tensor(train_config.getfloat("LOSS", "p_exp_up"), dtype=torch.float32)
+    p_down = torch.tensor(train_config.getfloat("LOSS", "p_down"), dtype=torch.float32)
+    ema_mse = torch.tensor(train_config.getfloat("LOSS", "ema_mse"), dtype=torch.float32)
+
+    # Calculate lam
+    if current_mse < ema_mse:
+        # DOWNTRENDING MSE, so decay lam
+        lam = p_down * lam
+    else:
+        # UPTRENDING MSE, so increase lam
+        # exponent = p_exp_up * ((current_mse - ema_mse) / (ema_mse + 1e-6))
+        
+        # Clamp the exponent so a massive outlier batch doesn't trigger float('inf')
+        # exponent = max(-2.0, min(exponent, 2.0)) 
+        # lam = lam * torch.exp(exponent)
+        lam = p_exp_up * lam
 
     # Config Model Name
     config_model_name = train_config.get("CONFIG_MODEL_NAME", "model_name")
@@ -73,11 +92,6 @@ def train_model_TD(train_config, run_dir, capacity, data_path=None, seed=42):
     # === Update train_config.ini with dataset statistics ===
     train_config.set("DATA", "replay_buffer_size", str(replay_buffer.size))
 
-    # Save updated config
-    config_save_path = os.path.join(run_dir, "train_config.ini")
-    with open(config_save_path, "w") as f:
-        train_config.write(f)
-
     # === Model / optimizer / loss ===
     # Load model dynamically
     ModelClass = MODEL_REGISTRY[model_name]
@@ -89,15 +103,21 @@ def train_model_TD(train_config, run_dir, capacity, data_path=None, seed=42):
     online_model = ModelClass(train_config).to(device)
     online_model.load_state_dict(torch.load(online_model_checkpoint_path, map_location=device))
 
+    ModelClass = MODEL_REGISTRY[model_name]
+    offline_model = ModelClass(train_config).to(device)
+    offline_model.load_state_dict(torch.load(offline_model_checkpoint_path, map_location=device))
+
     optimizer = torch.optim.Adam(online_model.parameters(), lr=learning_rate)
-    criterion = StationaryLoss(alpha=alpha)
+    criterion = TDLosslessV4(alpha=alpha, lam=lam)
 
     # ============================================
     # Logging
     # ============================================
 
-    train_losses = []
-    stationary_ratios = []
+    main_losses = []
+    td_losses = []
+    offline_losses = []
+    stationary_losses = []
 
     pbar = tqdm(range(gradient_steps), desc="Training")
 
@@ -122,6 +142,11 @@ def train_model_TD(train_config, run_dir, capacity, data_path=None, seed=42):
         with torch.no_grad():
             next_pred = target_model(X_tpn)
             target = cost_t + next_pred
+            offline_pred = offline_model(X_t)
+            if log_space:
+                target = torch.log1p(target)
+                offline_pred = torch.log1p(offline_pred)
+                ys = torch.log1p(ys)
 
         # Forward
         optimizer.zero_grad()
@@ -129,12 +154,17 @@ def train_model_TD(train_config, run_dir, capacity, data_path=None, seed=42):
         current_pred = online_model(X_t)
         preds_stationary = online_model(Xs)
 
+        if log_space:
+            current_pred = torch.log1p(current_pred)
+            preds_stationary = torch.log1p(preds_stationary)
+            
         # Loss
-        loss, loss1, loss2 = criterion(
+        loss, loss_td, loss_offline, loss_stationary = criterion(
             current_pred,
             target,
             preds_stationary,
-            ys
+            ys,
+            offline_pred
         )
 
         loss.backward()
@@ -150,19 +180,13 @@ def train_model_TD(train_config, run_dir, capacity, data_path=None, seed=42):
                     p_target.data.lerp_(p.data, target_tau)
 
         # ----------------------------
-        # Logging (FIXED)
+        # Logging
         # ----------------------------
-        train_losses.append(loss.item())
-
-        stationary_ratios.append(
-            (loss2.item() / (loss1.item() + 1e-8))
-        )
-
-        pbar.set_postfix({
-            "train_loss": f"{loss.item():.4e}",
-            "stationary": f"{stationary_ratios[-1]:.4f}"
-        })
-
+        main_losses.append(loss.item())
+        td_losses.append(loss_td.item())
+        offline_losses.append(loss_offline.item())
+        stationary_losses.append(loss_stationary.item())
+        
     # ========================================
     # Save checkpoint at the end of training
     # ========================================
@@ -183,8 +207,18 @@ def train_model_TD(train_config, run_dir, capacity, data_path=None, seed=42):
     else:
         show_plot = True
 
-    stationary_ratios_mean = float(np.mean(stationary_ratios))
+    main_losses_mean = float(np.mean(main_losses))
+    td_losses_mean = float(np.mean(td_losses))
+    offline_losses_mean = float(np.mean(offline_losses))
+    stationary_losses_mean = float(np.mean(stationary_losses))
 
-    plot_TD_loss(train_losses, stationary_ratios, run_dir=run_dir, show_plot=show_plot)
+    plot_TD_loss(main_losses, stationary_losses, run_dir=run_dir, show_plot=show_plot)
 
-    return train_losses[-1], stationary_ratios_mean
+    train_config.set("LOSS", "lam", str(lam.item()))   
+    
+    # Save updated config
+    config_save_path = os.path.join(run_dir, "train_config.ini")
+    with open(config_save_path, "w") as f:
+        train_config.write(f)
+
+    return main_losses_mean, td_losses_mean, offline_losses_mean, stationary_losses_mean, lam.item()

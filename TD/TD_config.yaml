@@ -27,4 +27,4 @@ resume_training: false
 loop_to_resume_from: 
 TD_dir: ""
 
-replay_buffer_capacity: 1000000
+replay_buffer_capacity: 500000

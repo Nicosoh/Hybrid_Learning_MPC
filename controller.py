@@ -1,4 +1,3 @@
-from colorlog import warning
 import scipy.linalg
 
 import numpy as np
@@ -187,7 +186,6 @@ class BaseMPCController:
         raise NotImplementedError("create_constraints_func method not implemented in BaseMPCController.")
     
     def update_parameters(self):
-        warning("No parameters to update for this controller.")
         pass
     
     def set_yref(self, yref_now):

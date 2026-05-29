@@ -24,7 +24,7 @@ def worker(worker_id, run_indices, model_name, output_dir, data_config, config):
     log_file_path = os.path.join(worker_output_dir, f"worker_{worker_id}.log")
     
     # Set unique seed combining time + worker_id for complete uniqueness
-    run_seed = worker_id
+    run_seed = worker_id + int(time.time() * 1000) % 100000
     random.seed(run_seed)
     np.random.seed(run_seed)
 

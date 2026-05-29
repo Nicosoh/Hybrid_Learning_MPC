@@ -3,7 +3,6 @@ import numpy as np
 
 from torch.utils.data import Dataset, random_split
 from data_collection import load_npz
-from neural_network.cost.cost import compute_l2_cost
 from utils import get_num_config
 
 class PendulumDataset(Dataset):

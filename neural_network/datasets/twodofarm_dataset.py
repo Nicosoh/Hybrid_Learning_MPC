@@ -6,7 +6,6 @@ import numpy as np
 from torch.utils.data import Dataset, random_split
 from data_collection import load_npz
 from utils import get_num_config
-from neural_network.cost import compute_l2_cost
 
 class TwoDofArmDataset(Dataset):
     """

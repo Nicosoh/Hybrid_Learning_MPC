@@ -108,7 +108,7 @@ def train_model_TD(train_config, run_dir, capacity, data_path=None, seed=42):
     offline_model.load_state_dict(torch.load(offline_model_checkpoint_path, map_location=device))
 
     optimizer = torch.optim.Adam(online_model.parameters(), lr=learning_rate)
-    criterion = TDLosslessV4(alpha=alpha, lam=lam)
+    criterion = TDLoss(alpha=alpha, lam=lam)
 
     # ============================================
     # Logging

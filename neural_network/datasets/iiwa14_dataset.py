@@ -213,12 +213,12 @@ class iiwa14Dataset_TD():
             # Stage cost
             # ====================================================
             Q_mat = np.array(self.model_config["mpc"]["Q_mat"])
-            Q_mat_dot = np.array(self.model_config["mpc"]["Q_mat_dot"])
+            Q_dot_mat = np.array(self.model_config["mpc"]["Q_dot_mat"])
             R_mat = np.array(self.model_config["mpc"]["R_mat"])
 
             # Tracking & Vel Reg cost
             xyz_cost = np.sum(Q_mat * (xyz ** 2), axis=1)
-            qvel_cost = np.sum(Q_mat_dot * (qvel ** 2), axis=1)
+            qvel_cost = np.sum(Q_dot_mat * (qvel ** 2), axis=1)
 
             # Control cost
             input_cost = np.sum(R_mat * (u ** 2), axis=1)

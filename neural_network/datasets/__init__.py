@@ -11,4 +11,5 @@ DATASET_REGISTRY = {
     # "TwoDofArmDataset_eeTracker_TD": TwoDofArmDataset_eeTracker_TD,
     "iiwa14_eeTracker": iiwa14_eeTracker,
     "iiwa14_eeTracker_obs": iiwa14_eeTracker_obs,
+    "iiwa14Dataset_TD": iiwa14Dataset_TD,
 }

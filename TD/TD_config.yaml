@@ -14,12 +14,27 @@
 # replay_buffer_capacity: 1000000
 
 
-model_name: Pendulum
+# model_name: Pendulum
+# data_config_path: data_collection/data_config.yaml
+# loop0_data_config_path: data_collection/loop0_data_config.yaml
+# train_config_path: neural_network/configs/PendulumModelTrainConfigTD.ini
+# TD_loops: 1000
+# NN_controller_name: NNMPCController
+
+# pretrained_weights_path: value_iteration/output/2026-05-12_22-49-16_Pendulum_VI/loop_13/training/model_epoch_5.pt
+
+# resume_training: false
+# loop_to_resume_from: 
+# TD_dir: ""
+
+# replay_buffer_capacity: 500000
+
+model_name: iiwa14
 data_config_path: data_collection/data_config.yaml
 loop0_data_config_path: data_collection/loop0_data_config.yaml
-train_config_path: neural_network/configs/PendulumModelTrainConfigTD.ini
+train_config_path: neural_network/configs/iiwa14ModelTrainConfigTD.ini
 TD_loops: 1000
-NN_controller_name: NNMPCController
+NN_controller_name: NNManipulatorMPCController_eeTracker_point
 
 pretrained_weights_path: value_iteration/output/2026-05-12_22-49-16_Pendulum_VI/loop_13/training/model_epoch_5.pt
 
@@ -27,4 +42,4 @@ resume_training: false
 loop_to_resume_from: 
 TD_dir: ""
 
-replay_buffer_capacity: 1000000
+replay_buffer_capacity: 500000

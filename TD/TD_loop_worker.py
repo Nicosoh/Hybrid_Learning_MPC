@@ -19,6 +19,7 @@ if project_root not in sys.path:
 
 from TD.replay_buffer import ReplayBuffer
 from neural_network.scripts import train_model_TD
+from neural_network.datasets import DATASET_REGISTRY
 from data_collection.data_utils import load_npz
 from data_collection.data_collector import run_data_collector
 
@@ -93,6 +94,8 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
         # Load Train config
         train_config = configparser.ConfigParser()
         train_config.read(train_config_path)
+        dataset_class = train_config.get("DATA", "dataset_class")
+        DatasetClass = DATASET_REGISTRY[dataset_class]
         
         # Configure for this loop
         if loop_num == 0:
@@ -102,6 +105,7 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
             train_config.set("MODEL", "load_checkpoint", "True")
             train_config.set("MODEL", "target_model_checkpoint_path", TD_config["pretrained_weights_path"])
             train_config.set("MODEL", "online_model_checkpoint_path", TD_config["pretrained_weights_path"])
+            train_config.set("MODEL", "offline_model_checkpoint_path", TD_config["pretrained_weights_path"])
         else:
             # Load from previous loop's best model and replay buffer
             prev_training_dir = os.path.join(main_output_dir, f"loop_{loop_num}", "training")
@@ -110,6 +114,13 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
 
             prev_data_dir = os.path.join(main_output_dir, f"loop_{loop_num}", "data")
             prev_replay_buffer_dir = os.path.join(prev_data_dir, "replay_buffer")
+
+            prev_train_config_path = os.path.join(main_output_dir, f"loop_{loop_num}", "training", "train_config.ini")
+            prev_train_config = configparser.ConfigParser()
+            prev_train_config.read(prev_train_config_path)
+            prev_lam = prev_train_config.get("LOSS", "lam")
+            ema_mse = prev_train_config.getfloat("LOSS", "ema_mse")
+            ema_mse_tau = prev_train_config.getfloat("LOSS", "ema_mse_tau")
 
             online_pt_files = glob.glob(os.path.join(prev_online_model_dir, "*.pt"))
             target_pt_files = glob.glob(os.path.join(prev_target_model_dir, "*.pt"))
@@ -124,12 +135,14 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
             target_model_path = target_pt_files[0]
             online_model_path = online_pt_files[0]
             prev_replay_buffer_path = prev_replay_buffer_npz_files[0]
+            train_config.set("LOSS", "lam", prev_lam)
             train_config.set("MODEL", "load_checkpoint", "True")
             train_config.set("MODEL", "target_model_checkpoint_path", target_model_path)
+            train_config.set("MODEL", "offline_model_checkpoint_path", TD_config["pretrained_weights_path"])
             train_config.set("MODEL", "online_model_checkpoint_path", online_model_path)
             model_config["mpc"]["controller_name"] = TD_config["NN_controller_name"]
             model_config["mpc"]["terminal_cost"] = True
-            model_config["NN"]["checkpoint_path"] = target_model_path
+            model_config["NN"]["checkpoint_path"] = online_model_path
 
         # -----------------
         # Data Collection
@@ -151,29 +164,6 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
                 f"found {len(npz_files)}"
             )
         data_collection_npz_path = npz_files[0]
-
-        # Load previous replay buffer and add new data
-        replay_buffer = ReplayBuffer(TD_config["replay_buffer_capacity"])
-        replay_buffer_path = os.path.join(replay_buffer_dir, "replay_buffer.npz")
-
-        if loop_num == 0:
-            replay_buffer.add_npz_data(data_collection_npz_path, train_config, model_config)
-            replay_buffer.save_buffer(replay_buffer_path)
-        elif loop_num > 0:
-            replay_buffer.reinstate_buffer(prev_replay_buffer_path)
-            replay_buffer.add_npz_data(data_collection_npz_path, train_config, model_config)
-            replay_buffer.save_buffer(replay_buffer_path)
-
-        # -----------------
-        # Training
-        # -----------------
-        log_worker(worker_log_path, "Starting model training")
-        train_loss, stationary_ratio_mean = train_model_TD(
-            train_config,
-            run_dir=training_dir,
-            capacity=TD_config["replay_buffer_capacity"],
-            data_path=replay_buffer_path,
-        )
 
         # Extract metrics
         log_worker(worker_log_path, "Extracting metrics")
@@ -206,6 +196,42 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
         ctrl_mean = float(np.nanmean(ctrl_cost)) if ctrl_cost else np.nan
         mse_mean = float(np.nanmean(sq_errors)) if sq_errors else np.nan
         mse_std = float(np.nanstd(sq_errors)) if sq_errors else np.nan
+
+        # Process mse_mean to use it as the "reward" signal for TD learning
+        if loop_num == 0:
+            new_ema_mse = mse_mean  # Initialize EMA with first loop's MSE
+        else:
+            new_ema_mse = ema_mse * (1 - ema_mse_tau) + mse_mean * ema_mse_tau
+
+        train_config.set("LOSS", "current_mse", str(mse_mean))
+        train_config.set("LOSS", "ema_mse", str(new_ema_mse))
+        
+        # Preprocess fresh data
+        dataset = DatasetClass(train_config, model_config, data_collection_npz_path)
+        
+        # Load previous replay buffer and add new data
+        replay_buffer = ReplayBuffer(TD_config["replay_buffer_capacity"])
+        replay_buffer_path = os.path.join(replay_buffer_dir, "replay_buffer.npz")
+
+        if loop_num == 0:
+            replay_buffer.add_trajectory(dataset.X_t, dataset.X_tpn, dataset.cost_n, dataset.Xs, dataset.ys)
+            replay_buffer.save_buffer(replay_buffer_path)
+        elif loop_num > 0:
+            replay_buffer.reinstate_buffer(prev_replay_buffer_path)
+            replay_buffer.add_trajectory(dataset.X_t, dataset.X_tpn, dataset.cost_n, dataset.Xs, dataset.ys)
+            replay_buffer.save_buffer(replay_buffer_path)
+
+        # -----------------
+        # Training
+        # -----------------
+        log_worker(worker_log_path, "Starting model training")
+        main_losses_mean, td_losses_mean, offline_losses_mean, stationary_losses_mean, lam = train_model_TD(
+            train_config,
+            run_dir=training_dir,
+            capacity=TD_config["replay_buffer_capacity"],
+            data_path=replay_buffer_path,
+            seed=np.random.randint(0, 100000)
+        )
         
         metrics = {
             "loop": loop_num + 1,
@@ -214,15 +240,19 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
             "mse": mse_mean,
             "mse_std": mse_std,
             "success": True,
-            "train_loss": train_loss,
-            "stationary_ratio_mean": stationary_ratio_mean
+            "main_loss": main_losses_mean,
+            "td_loss": td_losses_mean,
+            "offline_loss": offline_losses_mean,
+            "stationary_loss": stationary_losses_mean,
+            "lam": lam,
+            "ema_mse": new_ema_mse
         }
         with open(metrics_path, "w") as f:
             json.dump(metrics, f, indent=2)
 
         log_worker(worker_log_path, "Model training completed")
-        log_worker(worker_log_path, f"Metrics: Train Loss={train_loss:.4f}, Stationary Ratio={stationary_ratio_mean:.4f}")
-            
+        log_worker(worker_log_path, f"Metrics: Train Loss={main_losses_mean:.4f}, TD Loss={td_losses_mean:.4f}, Offline Loss={offline_losses_mean:.4f}, Stationary Loss={stationary_losses_mean:.4f}")
+
     except Exception as e:
         log_worker(worker_log_path, f"ERROR: {e}")
         import traceback
@@ -232,8 +262,12 @@ def run_td_loop(loop_num, main_output_dir, model_name, data_config_path,
             "loop": loop_num + 1,
             "success": False,
             "error": str(e),
-            "train_loss": None,
-            "stationary_ratio_mean": None
+            "main_loss": None,
+            "td_loss": None,
+            "offline_loss": None,
+            "stationary_loss": None,
+            "lam": None,
+            "ema_mse": None
         }
         with open(metrics_path, "w") as f:
             json.dump(metrics, f, indent=2)

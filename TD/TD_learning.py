@@ -20,13 +20,16 @@ def main():
         with open(td_log_path, "a") as f:
             f.write(line)
     
-    def update_plot(x, ground_truth, controller, MSE, MSE_std, train_loss, stationary_ratios):
+    def update_plot(x, ground_truth, controller, MSE, MSE_std, main_losses, td_losses, offline_losses, stationary_losses, lam, ema_MSE):
         """Update and save plot with current metrics in separate subplots."""
         ax1.clear()
         ax2.clear()
-        ax3.clear()  # new subplot for train loss
-        ax4.clear()  # new subplot for stationary ratio
-        
+        ax3.clear()
+        ax4.clear()
+        ax5.clear()
+        ax6.clear()
+        ax7.clear()
+
         # Top subplot: ground truth vs controller
         ax1.plot(x, ground_truth, label="Ground Truth", linewidth=0.8)
         ax1.plot(x, controller, label="Controller", linewidth=0.8)
@@ -39,6 +42,7 @@ def main():
         MSE_std = np.array(MSE_std)
         
         ax2.plot(x, MSE, label="MSE", color='green', linewidth=0.8)
+        ax2.plot(x, ema_MSE, label="EMA MSE", color='blue', linewidth=0.8)
         if len(MSE_std) == len(MSE):
             ax2.fill_between(x, MSE - MSE_std, MSE + MSE_std, color='r', alpha=0.3, label="MSE ± std")
         
@@ -49,21 +53,45 @@ def main():
         ax2.legend(loc='upper right')
         
         # Bottom subplot: training loss
-        train_loss = np.array(train_loss)
-        ax3.plot(x, train_loss, label="Train Loss", color='b', linewidth=0.8)
-        ax3.set_xlabel("TD Loop")
-        ax3.set_ylabel("Train Loss")
+        main_losses = np.array(main_losses)
+        ax3.plot(x, main_losses, label="Main Loss", color='b', linewidth=0.8)
+        ax3.set_ylabel("Main Loss")
         ax3.grid(True, which="both", linestyle=":", alpha=0.4)
         ax3.legend(loc='upper right')
+        ax3.set_yscale('log')
 
-        # New subplot: stationary ratio
-        stationary_ratios = np.array(stationary_ratios)
-        ax4.plot(x, stationary_ratios, label="Stationary Ratio", color='m', linewidth=0.8)
-        ax4.set_xlabel("TD Loop")
-        ax4.set_ylabel("Stationary Ratio")
+        # New subplot: TD loss
+        td_losses = np.array(td_losses)
+        ax4.plot(x, td_losses, label="TD Loss", color='g', linewidth=0.8)
+        ax4.set_ylabel("TD Loss")
         ax4.grid(True, which="both", linestyle=":", alpha=0.4)
         ax4.legend(loc='upper right')
-        
+        ax4.set_yscale('log')
+
+        # New subplot: offline loss
+        offline_losses = np.array(offline_losses)
+        ax5.plot(x, offline_losses, label="Offline Loss", color='orange', linewidth=0.8)
+        ax5.set_ylabel("Offline Loss")
+        ax5.grid(True, which="both", linestyle=":", alpha=0.4)
+        ax5.legend(loc='upper right')
+        ax5.set_yscale('log')
+
+        # New subplot: stationary loss
+        stationary_losses = np.array(stationary_losses)
+        ax6.plot(x, stationary_losses, label="Stationary Loss", color='m', linewidth=0.8)
+        ax6.set_ylabel("Stationary Loss")
+        ax6.grid(True, which="both", linestyle=":", alpha=0.4)
+        ax6.legend(loc='upper right')
+        ax6.set_yscale('log')
+
+        lam = np.array(lam)
+        ax7.plot(x, lam, label="Lambda", color='c', linewidth=0.8)
+        ax7.set_xlabel("TD Loop")
+        ax7.set_ylabel("Lambda")
+        ax7.grid(True, which="both", linestyle=":", alpha=0.4)
+        ax7.legend(loc='upper right')
+        ax7.set_yscale('log')
+
         fig.tight_layout()
         plt.savefig(plt_save_path, dpi=400, bbox_inches='tight')
     
@@ -122,15 +150,19 @@ def main():
         f.write("=" * 50 + "\n\n")
     
     # Setup plot
-    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(8, 8), sharex=True)
+    fig, (ax1, ax2, ax3, ax4, ax5, ax6, ax7) = plt.subplots(7, 1, figsize=(8, 14), sharex=True)
     
     x = []
     ground_truth = []
     controller = []
     MSE = []
     MSE_std = []
-    train_loss = []
-    stationary_ratios = []
+    ema_MSE = []
+    main_losses = []
+    td_losses = []
+    offline_losses = []
+    stationary_losses = []
+    lam = []
     
     # Absolute path to the worker script
     TD_loop_worker_path = os.path.join(os.path.dirname(__file__), "TD_loop_worker.py")
@@ -190,18 +222,22 @@ def main():
                     ground_truth.append(metrics["gt_cost"])
                     controller.append(metrics["ctrl_cost"])
                     MSE.append(metrics["mse"])
-                    MSE_std.append(metrics["mse_std"])
-                    train_loss.append(metrics["train_loss"])
-                    stationary_ratios.append(metrics["stationary_ratio_mean"])
+                    MSE_std.append (metrics["mse_std"])
+                    main_losses.append(metrics["main_loss"])
+                    td_losses.append(metrics["td_loss"])
+                    offline_losses.append(metrics["offline_loss"])
+                    stationary_losses.append(metrics["stationary_loss"])
+                    lam.append(metrics["lam"])
+                    ema_MSE.append(metrics["ema_mse"])
 
-                    log_td(f"Metrics: GT={metrics['gt_cost']:.4f}, CTRL={metrics['ctrl_cost']:.4f}, MSE={metrics['mse']:.4e}, TR_loss={metrics['train_loss']:.4f}, Stationary Ratio={metrics['stationary_ratio_mean']:.4f}")
+                    log_td(f"Metrics: GT={metrics['gt_cost']:.4f}, CTRL={metrics['ctrl_cost']:.4f}, MSE={metrics['mse']:.4e}, TR_loss={metrics['main_loss']:.4f}, TD Loss={metrics['td_loss']:.4f}, Offline Loss={metrics['offline_loss']:.4f}, Stationary Loss={metrics['stationary_loss']:.4f}")
                 else:
                     log_td(f"ERROR: {metrics.get('error', 'Unknown error')}")
             else:
                 log_td(f"ERROR: No metrics file found at {metrics_path}")
             
             # Update plot after each loop
-            update_plot(x, ground_truth, controller, MSE, MSE_std, train_loss, stationary_ratios)
+            update_plot(x, ground_truth, controller, MSE, MSE_std, main_losses, td_losses, offline_losses, stationary_losses, lam, ema_MSE)
             
         except Exception as e:
             log_td(f"ERROR spawning/running loop worker: {e}")

@@ -160,3 +160,143 @@ class iiwa14_eeTracker_obs(iiwa14_eeTracker):
         self.Xs = torch.from_numpy(np.vstack(Xs_list)).float()
         self.y = torch.from_numpy(np.vstack(y_list)).float()
         self.ys = torch.from_numpy(np.vstack(ys_list)).float()
+
+class iiwa14Dataset_TD():
+    """
+    N-step TD dataset for value learning (NO discounting).
+
+    Target structure:
+
+        G_t^(n) = sum_{k=0}^{n-1} cost_{t+k}
+
+    Training target:
+
+        y_t = G_t^(n) + V(s_{t+n})
+
+    Returned:
+        X_t        : state at time t
+        X_tpn      : state at time t+n
+        cost_n     : cumulative n-step cost
+        Xs         : stationary goal states
+        ys         : terminal target (zeros)
+    """
+
+    def __init__(self, config, model_config, data_path):
+        self.config = config
+        self.model_config = model_config
+        self.n_step = self.config.getint("TRAINING", "n_step")
+
+        self.preprocess_data(load_npz(data_path))
+
+    def preprocess_data(self, data):
+
+        X_t_list = []
+        X_tpn_list = []
+        cost_n_list = []
+
+        Xs_list = []
+        ys_list = []
+
+        n = self.n_step
+
+        for run_key in data.keys():
+
+            run_data = data[run_key]
+
+            qpos = run_data["qpos"]
+            qvel = run_data["qvel"]
+            u = run_data["u_applied"]
+            xyz = run_data["xyzpos"]
+            yref_xyz = run_data["yref_xyz"] # (3,)
+            yref_q = run_data["yref_q"] # (6,)
+            # ====================================================
+            # Stage cost
+            # ====================================================
+            Q_mat = np.array(self.model_config["mpc"]["Q_mat"])
+            Q_dot_mat = np.array(self.model_config["mpc"]["Q_dot_mat"])
+            R_mat = np.array(self.model_config["mpc"]["R_mat"])
+            mpc_timestep = np.array(self.model_config["mpc"]["mpc_timestep"])
+
+            # Tracking & Vel Reg cost
+            xyz_cost = np.sum(Q_mat * (xyz ** 2), axis=1)
+            qvel_cost = np.sum(Q_dot_mat * (qvel ** 2), axis=1)
+
+            # Control cost
+            input_cost = np.sum(R_mat * (u ** 2), axis=1)
+
+            # Total cost
+            cost = mpc_timestep * (xyz_cost + qvel_cost + input_cost)
+
+            # ====================================================
+            # STATE:
+            # [qpos, qvel]
+            # ====================================================
+            yref_xyz = np.tile(yref_xyz, (qpos.shape[0], 1)) # (T, 3)
+            X = np.concatenate([qpos, qvel, yref_xyz, xyz], axis=1)
+
+            # ====================================================
+            # Stationary goal manifold
+            # ====================================================
+            yref_q = np.tile(yref_q, (qpos.shape[0], 1)) # (T, 6)
+            Xs_run = np.concatenate([yref_q, np.zeros_like(qvel), yref_xyz, yref_xyz], axis=1)
+
+            T = X.shape[0]
+
+            # ====================================================
+            # Build N-step TD samples
+            # ====================================================
+            for t in range(T - n):
+
+                # --------------------------------------------
+                # Current state
+                # --------------------------------------------
+                X_t = X[t]
+
+                # --------------------------------------------
+                # Bootstrap state
+                # --------------------------------------------
+                X_tpn = X[t + n]
+
+                # --------------------------------------------
+                # N-step cumulative cost
+                # NO discounting
+                # --------------------------------------------
+                cumulative_cost = np.sum(cost[t:t+n])
+
+                # --------------------------------------------
+                # Goal stationary state
+                # --------------------------------------------
+                Xs = Xs_run[t]
+
+                # --------------------------------------------
+                # Terminal supervision target
+                # V(goal) = 0
+                # --------------------------------------------
+                y = np.array([0.0], dtype=np.float32)
+
+                # --------------------------------------------
+                # Append
+                # --------------------------------------------
+                X_t_list.append(X_t)
+                X_tpn_list.append(X_tpn)
+
+                cost_n_list.append(np.array([cumulative_cost], dtype=np.float32))
+
+                Xs_list.append(Xs)
+
+                ys_list.append(y)
+
+        # ====================================================
+        # Stack everything
+        # ====================================================
+        self.X_t = torch.from_numpy(np.vstack(X_t_list)).float()
+        self.X_tpn = torch.from_numpy(np.vstack(X_tpn_list)).float()
+        self.cost_n = torch.from_numpy(np.vstack(cost_n_list)).float()
+        self.Xs = torch.from_numpy(np.vstack(Xs_list)).float()
+        self.ys = torch.from_numpy(np.vstack(ys_list)).float()
+
+    def __len__(self):
+        return self.X_t.shape[0]
+
+    def __getitem__(self, idx):
+        return (self.X_t[idx], self.X_tpn[idx], self.Xs[idx], self.cost_n[idx], self.ys[idx])

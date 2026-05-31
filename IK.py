@@ -200,11 +200,6 @@ class InverseKinematicsSolver:
                 )
             
             attempt += 1
-        
-        raise ValueError(
-            f"Failed to load valid {q_name} configuration in {max_attempts} attempts.\n"
-            f"Last sampled q: {q}"
-        )
     
     def load_q(self, q_name: str):
         if self.config["mpc"][f"{q_name}_random"]:

@@ -145,6 +145,7 @@ class PendulumDataset_TD():
             # ====================================================
             Q_mat = np.array(self.model_config["mpc"]["Q_mat"])
             R_mat = np.array(self.model_config["mpc"]["R_mat"])
+            mpc_timestep = np.array(self.model_config["mpc"]["mpc_timestep"])
 
             # Tracking & Vel Reg cost
             x = np.concatenate([qpos, qvel], axis=1)
@@ -154,7 +155,7 @@ class PendulumDataset_TD():
             input_cost = np.sum(R_mat * (u ** 2), axis=1)
 
             # Total cost
-            cost = cost + input_cost
+            cost = mpc_timestep * (cost + input_cost)
 
             # ====================================================
             # STATE:

@@ -32,6 +32,9 @@ def main(model_name, data_path, run, samples):
 
     # Load data
     all_logs = load_npz(npz_file)
+
+    save_ranges_to_txt(all_logs, save_dir=plots_dir)
+    
     if config["IK"]["IK_required"]:
         plot_traj_xyz(all_logs, config=config, samples=samples, frame_name="attachment_site", save_dir=plots_dir)
         plot_xyz_targets(all_logs, samples=samples, save_dir=plots_dir)
@@ -606,6 +609,82 @@ def plot_dist(
         fig_obs.savefig(os.path.join(save_dir, "Obstacle_histogram_plots.png"))
 
     plt.show()
+
+def save_ranges_to_txt(all_logs, save_dir):
+    """
+    Calculates and saves the min, max, and mean ranges of tracking variables 
+    (qpos, qvel, xyzpos, yref_xyz, obstacles) across all logged runs to a text file.
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    txt_path = os.path.join(save_dir, "data_variable_ranges.txt")
+    
+    run_keys = sorted(all_logs.keys())
+    
+    # Lists to collect metrics across all timesteps and all runs
+    all_qpos = []
+    all_qvel = []
+    all_xyz = []
+    all_yref = []
+    all_obs_centers = []
+    all_obs_rpys = []
+
+    for run_key in run_keys:
+        run_data = all_logs[run_key]
+        
+        if "qpos" in run_data:
+            all_qpos.append(run_data["qpos"])
+        if "qvel" in run_data:
+            all_qvel.append(run_data["qvel"])
+        if "xyzpos" in run_data:
+            all_xyz.append(run_data["xyzpos"])
+        if "yref_xyz" in run_data:
+            # yref usually doesn't have a time dim, expanding to stack cleanly
+            yref = np.atleast_2d(run_data["yref_xyz"])
+            all_yref.append(yref)
+            
+        if "obstacles" in run_data:
+            try:
+                obs = run_data["obstacles"].item()["obs1"]
+                all_obs_centers.append(np.atleast_2d(obs["center"]))
+                all_obs_rpys.append(np.atleast_2d(obs["rpy"]))
+            except (AttributeError, KeyError):
+                pass
+
+    # Helper helper to compute summary metrics cleanly
+    def get_summary_str(name, data_list):
+        if not data_list:
+            return f"=== {name} ===\nNo data found in logs.\n\n"
+        
+        combined = np.concatenate(data_list, axis=0)
+        num_channels = combined.shape[1]
+        
+        summary = f"=== {name} (Shape: {combined.shape}) ===\n"
+        for i in range(num_channels):
+            channel_data = combined[:, i]
+            c_min = np.min(channel_data)
+            c_max = np.max(channel_data)
+            c_mean = np.mean(channel_data)
+            summary += f"  Dim {i:02d} -> Min: {c_min:10.5f} | Max: {c_max:10.5f} | Mean: {c_mean:10.5f}\n"
+        return summary + "\n"
+
+    # Compile the content
+    output_content = (
+        f"DATASET RANGE REPORT\n"
+        f"====================\n"
+        f"Total Runs Analyzed: {len(run_keys)}\n\n"
+    )
+    output_content += get_summary_str("qpos (Joint Positions)", all_qpos)
+    output_content += get_summary_str("qvel (Joint Velocities)", all_qvel)
+    output_content += get_summary_str("xyzpos (End-Effector Cartesian Workspace)", all_xyz)
+    output_content += get_summary_str("yref_xyz (Target References / Goals)", all_yref)
+    output_content += get_summary_str("Obstacle 1 Centers", all_obs_centers)
+    output_content += get_summary_str("Obstacle 1 Orientations (RPY)", all_obs_rpys)
+
+    # Save to file
+    with open(txt_path, "w") as f:
+        f.write(output_content)
+        
+    print(f"Successfully documented and saved variable boundaries to: {txt_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visualize data for a model")

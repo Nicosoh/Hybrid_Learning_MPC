@@ -89,17 +89,6 @@ def train_model(config, run_dir, data_path=None, seed=42):
     if load_checkpoint:
         model.load_state_dict(torch.load(checkpoint_path, map_location=device))
         print(f"Loaded model weights from checkpoint: {checkpoint_path}")
-    else:
-        def init_weights(m):
-            if isinstance(m, nn.Linear):
-                if m is model.fc_out:  # explicitly final layer
-                    nn.init.xavier_uniform_(m.weight)
-                else:
-                    nn.init.xavier_uniform_(m.weight, gain=nn.init.calculate_gain('tanh'))
-                nn.init.zeros_(m.bias)
-
-        model.apply(init_weights)
-        print("Init weights with Xavier")
         
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = StationaryLoss(alpha=alpha)

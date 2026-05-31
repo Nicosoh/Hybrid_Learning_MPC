@@ -215,6 +215,7 @@ class iiwa14Dataset_TD():
             Q_mat = np.array(self.model_config["mpc"]["Q_mat"])
             Q_dot_mat = np.array(self.model_config["mpc"]["Q_dot_mat"])
             R_mat = np.array(self.model_config["mpc"]["R_mat"])
+            mpc_timestep = np.array(self.model_config["mpc"]["mpc_timestep"])
 
             # Tracking & Vel Reg cost
             xyz_cost = np.sum(Q_mat * (xyz ** 2), axis=1)
@@ -224,7 +225,7 @@ class iiwa14Dataset_TD():
             input_cost = np.sum(R_mat * (u ** 2), axis=1)
 
             # Total cost
-            cost = xyz_cost + qvel_cost + input_cost
+            cost = mpc_timestep * (xyz_cost + qvel_cost + input_cost)
 
             # ====================================================
             # STATE:
